@@ -84,11 +84,11 @@ export default class Changelog extends Plugin {
       .sort((a, b) => (a.stat.mtime < b.stat.mtime ? 1 : -1))
       .slice(0, this.settings.numberOfFilesToShow);
     let changelogContent = ``;
-    let deviceNameSnippet = "";
+    let deviceNameSnippet = undefined;
     
     if(this.settings.deviceName)
     {
-      deviceNameSnippet = `- ${this.settings.deviceName}, on`;
+      deviceNameSnippet = `- *${this.settings.deviceName}* on`;
     }
     else
     {
@@ -99,7 +99,7 @@ export default class Changelog extends Plugin {
       // TODO: make date format configurable (and validate it)
       const humanTime = window
         .moment(recentlyEditedFile.stat.mtime)
-        .format("YYYY-MM-DD, [at] HH[h]mm");
+        .format("YYYY-MM-DD [at] HH[h]mm");
       changelogContent += `${deviceNameSnippet} ${humanTime} · [[${recentlyEditedFile.basename}]]\n`;
     }
     return changelogContent;
@@ -163,6 +163,21 @@ class ChangelogSettingsTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName("Device name")
+      .setDesc(
+        "Give this device a unique name to record it against items in the change log"
+      )
+      .addText((text) => {
+        text
+          .setPlaceholder("Example: Work Laptop")
+          .setValue(settings.deviceName)
+          .onChange((value) => {
+            settings.deviceName = value;
+            this.plugin.saveSettings();
+          });
+      })
+
+    new Setting(containerEl)
       .setName("Number of recent files in changelog")
       .setDesc("Number of most recently edited files to show in the changelog")
       .addText((text) =>
@@ -190,20 +205,5 @@ class ChangelogSettingsTab extends PluginSettingTab {
             this.plugin.registerWatchVaultEvents();
           })
       );
-
-    new Setting(containerEl)
-      .setName("Device name")
-      .setDesc(
-        "Give this device a unique name to record it against items in the change log."
-      )
-      .addText((text) => {
-        text
-          .setPlaceholder("Example: Work Laptop")
-          .setValue(settings.deviceName)
-          .onChange((value) => {
-            settings.deviceName = value;
-            this.plugin.saveSettings();
-          });
-      })
   }
 }
