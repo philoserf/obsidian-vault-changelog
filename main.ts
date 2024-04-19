@@ -10,6 +10,7 @@ import {
 import type moment from "moment";
 
 const DEFAULT_SETTINGS: ChangelogSettings = {
+  deviceName: undefined,
   numberOfFilesToShow: 10,
   changelogFilePath: "",
   watchVaultChange: false,
@@ -83,12 +84,23 @@ export default class Changelog extends Plugin {
       .sort((a, b) => (a.stat.mtime < b.stat.mtime ? 1 : -1))
       .slice(0, this.settings.numberOfFilesToShow);
     let changelogContent = ``;
+    let deviceNameSnippet = "";
+    
+    if(this.settings.deviceName)
+    {
+      deviceNameSnippet = `- ${this.settings.deviceName}, on`;
+    }
+    else
+    {
+      deviceNameSnippet = "- "
+    }
+
     for (let recentlyEditedFile of recentlyEditedFiles) {
       // TODO: make date format configurable (and validate it)
       const humanTime = window
         .moment(recentlyEditedFile.stat.mtime)
-        .format("YYYY-MM-DD [at] HH[h]mm");
-      changelogContent += `- ${humanTime} · [[${recentlyEditedFile.basename}]]\n`;
+        .format("YYYY-MM-DD, [at] HH[h]mm");
+      changelogContent += `${deviceNameSnippet} ${humanTime} · [[${recentlyEditedFile.basename}]]\n`;
     }
     return changelogContent;
   }
@@ -116,6 +128,7 @@ export default class Changelog extends Plugin {
 }
 
 interface ChangelogSettings {
+  deviceName: string;
   changelogFilePath: string;
   numberOfFilesToShow: number;
   watchVaultChange: boolean;
@@ -177,5 +190,20 @@ class ChangelogSettingsTab extends PluginSettingTab {
             this.plugin.registerWatchVaultEvents();
           })
       );
+
+    new Setting(containerEl)
+      .setName("Device name")
+      .setDesc(
+        "Give this device a unique name to record it against items in the change log."
+      )
+      .addText((text) => {
+        text
+          .setPlaceholder("Example: Work Laptop")
+          .setValue(settings.deviceName)
+          .onChange((value) => {
+            settings.deviceName = value;
+            this.plugin.saveSettings();
+          });
+      })
   }
 }
