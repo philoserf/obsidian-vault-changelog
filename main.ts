@@ -138,7 +138,7 @@ class ChangelogSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Changelog note location")
-      .setDesc("Changelog file absolute path (including the extension)")
+      .setDesc("A path relative to the root including file name and extension")
       .addText((text) => {
         text
           .setPlaceholder("Example: Folder/Changelog.md")

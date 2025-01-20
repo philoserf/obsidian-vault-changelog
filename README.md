@@ -34,7 +34,7 @@ You can configure two other options:
 
 ### Changelog file location
 
-The changelog file location input is the full absolute path (including .md extension).
+The changelog file location is a path relative to the root including file name and extension. e.g. `Changelog.md` or `data/changes.md`.
 
 ```
 ./
