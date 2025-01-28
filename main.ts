@@ -13,6 +13,7 @@ const DEFAULT_SETTINGS: ChangelogSettings = {
   numberOfFilesToShow: 10,
   changelogFilePath: "",
   watchVaultChange: false,
+  excludePaths: "",
 };
 
 declare global {
@@ -73,6 +74,8 @@ export default class Changelog extends Plugin {
   }
 
   buildChangelog(): string {
+    const pathsToExclude = this.settings.excludePaths.split(',');
+    const cache = this.app.metadataCache;
     const files = this.app.vault.getMarkdownFiles();
     const recentlyEditedFiles = files
       // Remove changelog file from recentlyEditedFiles list
@@ -80,15 +83,45 @@ export default class Changelog extends Plugin {
         (recentlyEditedFile) =>
           recentlyEditedFile.path !== this.settings.changelogFilePath
       )
+      // Remove files from paths to be excluded from recentlyEditedFiles list
+      .filter(
+        function (recentlyEditedFile) {
+          let i;
+          let keep = true;
+          for (i = 0; i < pathsToExclude.length; i++) {
+            if (recentlyEditedFile.path.startsWith(pathsToExclude[i].trim())) {
+              keep = false;
+              break;
+            }
+          }
+          return keep;
+        }
+      )
+      // exclude if specifically told not to
+      .filter(
+        function (recentlyEditedFile) {
+          const frontMatter = cache.getFileCache(recentlyEditedFile).frontmatter;
+          if (frontMatter && frontMatter.publish === false) {
+            return false;  
+          }
+          return true;
+         }        
+      )
       .sort((a, b) => (a.stat.mtime < b.stat.mtime ? 1 : -1))
       .slice(0, this.settings.numberOfFilesToShow);
     let changelogContent = ``;
+    let header = ``;
     for (let recentlyEditedFile of recentlyEditedFiles) {
       // TODO: make date format configurable (and validate it)
       const humanTime = window
         .moment(recentlyEditedFile.stat.mtime)
-        .format("YYYY-MM-DD [at] HH[h]mm");
-      changelogContent += `- ${humanTime} · [[${recentlyEditedFile.basename}]]\n`;
+        // date is already shown in the titles
+        .format("YYYY-MM-DD HH[h]mm");
+        if (header != humanTime.substring(0,10)) {
+        header = humanTime.substring(0,10)
+        changelogContent += `## ${header}\n`
+      }
+      changelogContent += `- ${humanTime.substring(10,16)} · [[${recentlyEditedFile.basename}]]\n`;
     }
     return changelogContent;
   }
@@ -119,6 +152,7 @@ interface ChangelogSettings {
   changelogFilePath: string;
   numberOfFilesToShow: number;
   watchVaultChange: boolean;
+  excludePaths: string;
 }
 
 class ChangelogSettingsTab extends PluginSettingTab {
@@ -177,5 +211,18 @@ class ChangelogSettingsTab extends PluginSettingTab {
             this.plugin.registerWatchVaultEvents();
           })
       );
+    
+      new Setting(containerEl)
+      .setName("Excluded paths")
+      .setDesc("Paths or folders to ignore from changelog, separated by a comma")
+      .addText((text) => {
+        text
+          .setPlaceholder("Example: Meetings,People")
+          .setValue(settings.excludePaths)
+          .onChange((value) => {
+            settings.excludePaths = value;
+            this.plugin.saveSettings();
+          });
+      });
   }
 }
