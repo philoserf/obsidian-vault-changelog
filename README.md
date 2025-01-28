@@ -37,11 +37,11 @@ You can configure two other options:
 The changelog file location input is the full absolute path (including .md extension).
 
 ```
-.
-├── notes
-│   └── misc
-│   └── changelog.md
-├── pictures
+./
+├── notes/
+│   └── misc/
+│       └── changelog.md
+├── pictures/
 ├── some-note.md
 └── some-other-note.md
 ```
