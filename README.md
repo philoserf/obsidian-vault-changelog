@@ -1,84 +1,65 @@
 # Obsidian Vault Changelog Plugin
 
-This is a simple plugin that maintains a changelog of recently edited files in your vault.
-The changelog update can be triggered both manually and automatically.
+A plugin to maintain a change log of recently edited files in your Obsidian vault. Updates can be triggered manually or automatically.
 
-<img src="https://raw.githubusercontent.com/MrZeroo00/obsidian-vault-changelog/main/resources/demo.png" width=50% height=50%>
+**Important:** The change log note will be entirely overwritten at each update. Use a dedicated change log note and embed it in other notes if needed.
 
-**Everything in the changelog note will be overwritten**. It's best to use a dedicated changelog note and embed it in other notes.
+**Note:** This is a continuation of the original work by Badr Bouslikhin from 2020 to 2024. In January, Badr entrusted the project to Mark Ayers by transferring the code repository. On behalf of the Obsidian community, I want to express our gratitude to Badr for this valuable contribution.
 
-<img src="https://raw.githubusercontent.com/MrZeroo00/obsidian-vault-changelog/main/resources/demo-embedded.png" width=50% height=50%>
+## Installation
 
-## How to Install
+1. Open settings.
+2. Navigate to "Community plugins".
+3. Select "Browse".
+4. Search for "Changelog."
+5. Install and enable.
 
-### Manual installation
+link: <https://obsidian.md/plugins?id=obsidian-vault-changelog#>
 
-1. Download zip archive from GitHub releases page.
-1. Extract the archive into `<vault>/.obsidian/plugins`.
-1. Reload Obsidian
+## Usage
 
-### From within Obsidian
+Use the command palette command `Vault Changelog: Update` to update the
+change log manually.
 
-You can install the plugin via the Community Plugins tab within Obsidian. Just search for "Changelog".
+## Example
 
-## How to use
-
-Once the plugin is installed and activated, you must provide it with the changelog file path.
-
-You can update the changelog using the new command `Vault changelog: update` in the command palette.
-
-You can configure two other options:
-
-1. Number of recent files to show in the changelog
-1. Automatic refresh of the changelog: this option automatically updates changelog on any note modification, deletion or rename.
-
-### Changelog file location
-
-The changelog file location input is the full absolute path (including .md extension).
-
-```
-./
-├── notes/
-│   └── misc/
-│       └── changelog.md
-├── pictures/
-├── some-note.md
-└── some-other-note.md
+```markdown
+- 2024-01-28T1430 · [[Note Title]]
+- 2024-01-28T1425 · [[Another Note]]
 ```
 
-If you want to use `changelog.md` from the example above, you should input `notes/misc/changelog.md` in the preference pane.
+## Settings
+
+- **Auto Update**: Toggle automatic changelog updates (default: `false`)
+- **Changelog Path**: Location of changelog file (default: `Changelog.md`)
+- **Datetime Format**: Moment.js format string (default: `YYYY-MM-DD[T]HHmm`)
+- **Max Recent Files**: Number of files to track (default: `25`)
+
+## Changelog
+
+### v1.0.0
+
+- placeholder
+
+### v0.1.0
+
+- The initial release by Badr Bouslikhin
+
+## Code of conduct
+
+We are all human beings, being human. Treat each other with respect and decorum. Assume good intentions. Practice a "Yes, and" worldview.
+
+## Contributing
+
+- Open (or contribute to) a [Discussion on GitHub](https://github.com/philoserf/obsidian-vault-changelog/discussions)
+- Open (or contribute to) an [Issue on GitHub](https://github.com/philoserf/obsidian-vault-changelog/issues)
+- Open (or contribute to) a [Pull Request on GitHub](<(https://github.com/philoserf/obsidian-vault-changelog/pulls)>)
+- Discuss the plugin in the [Forum](https://forum.obsidian.md)
+- Discuss the plugin on [Discord](https://discord.gg/obsidianmd)
 
 ## Development
 
-This project uses Typescript to provide type checking and documentation.  
-This plugin depends on the latest [plugin API](https://github.com/obsidianmd/obsidian-api) in Typescript Definition format, which contains TSDoc comments describing what it does.
-
-**Note:** the Obsidian API is still in early alpha and is subject to change at any time!
-
-If you want to contribute to development and/or just customize it with your own
-tweaks, you can do the following:
-
-- Clone this repository.
-- `npm i` or `yarn` to install dependencies
-- `npm run build` to compile.
-- Copy `manifest.json`, `main.js` and `styles.css` to a subfolder of your plugins
-  folder (e.g. `<vault>/.obsidian/plugins/obsidian-vault-changelog/`)
-- Reload obsidian to see changes
-
-## Notes
-
-This is experimental and may have instability. It is possible that there are
-bugs which may delete data in the current note. Please make backups!
-
-## Common issues and solutions
-
-### Issue 1: Couldn`t write changelog: check the file path
-
-1. Create a new file, for example - `notes/misc/changelog`
-2. Go to **Settings -> Plugin Option -> Vault Changelog**
-2. Enter path in **Changelog note location - notes/misc/changelog.md**
-3. Restart Obsidian
-
-#### **Notes:**
-> - Make sure to keep a **_proper file path and a name_**, like the one I have used.
-> - If you are creating a new file with Obsidian, then **_don't put a (.md) extension_**. 
+1. Clone this repository `gh repo clone philoserf/obsidian-vault-changelog`.
+2. Install dependencies with `npm install`.
+3. Build the project with `npm run build`.
+4. Add the `manifest.json` and `main.js` files to your plugins.
