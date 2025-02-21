@@ -1,4 +1,5 @@
 import { App, PluginSettingTab, Setting, normalizePath } from "obsidian";
+import { FolderSuggest } from "./folderSuggest";
 import ChangelogPlugin from "./main";
 
 export interface ChangelogSettings {
@@ -47,7 +48,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Changelog path")
 			.setDesc("Relative path including filename and extension")
-			.addText((text) =>
+			.addText((text) =>{
 				text
 					.setPlaceholder("Folder/Changelog.md")
 					.setValue(settings.changelogPath)
@@ -55,6 +56,9 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 						settings.changelogPath = normalizePath(path);
 						await this.plugin.saveSettings();
 					}),
+				new FolderSuggest(this.plugin.app, text.inputEl);
+				text.inputEl.classList.add("vault-changelog-wide-input");
+				}
 			);
 
 		new Setting(containerEl)
