@@ -1,8 +1,3 @@
 main.js
+main.js.map
 node_modules/
-data.json
-.obsidian/appearance.json
-.obsidian/core-plugins.json
-.obsidian/graph.json
-.obsidian/workspace.json
-CHANGELOG.md
