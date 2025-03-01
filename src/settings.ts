@@ -29,7 +29,7 @@ export interface ChangelogSettings {
 	excludedFolders: string[];
 }
 
-// Define the default settings
+/** Define the default settings */
 export const DEFAULT_SETTINGS: ChangelogSettings = {
 	autoUpdate: false,
 	changelogPath: "Changelog.md",
@@ -38,7 +38,7 @@ export const DEFAULT_SETTINGS: ChangelogSettings = {
 	excludedFolders: [],
 };
 
-// Define the settings tab
+/** Define the settings tab */
 export class ChangelogSettingsTab extends PluginSettingTab {
 	plugin: ChangelogPlugin;
 
@@ -47,7 +47,10 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	// Helper method to render the list of excluded folders
+	/**
+	 * Helper method to render the list of excluded folders
+	 * @param container The HTML element to render into
+	 */
 	renderExcludedFolders(container: HTMLElement) {
 		container.empty();
 
@@ -77,7 +80,9 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 		});
 	}
 
-	// Display the settings tab
+	/**
+	 * Display the settings tab with all configuration options
+	 */
 	display() {
 		const { containerEl } = this;
 		const { settings } = this.plugin;
@@ -99,7 +104,10 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 				}),
 			);
 
-		// Changelog path
+		/**
+		 * Changelog path setting
+		 * Controls where the changelog file will be created/updated
+		 */
 		new Setting(containerEl)
 			.setName("Changelog path")
 			.setDesc("Relative path including filename and extension")
@@ -115,7 +123,10 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 				new PathSuggest(this.app, text.inputEl);
 			});
 
-		// Datetime format
+		/**
+		 * Datetime format setting
+		 * Configures how timestamps appear in the changelog using Moment.js format
+		 */
 		new Setting(containerEl)
 			.setName("Datetime format")
 			.setDesc("Moment.js datetime format string")
@@ -142,7 +153,10 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 					}),
 			);
 
-		// Max recent
+		/**
+		 * Maximum recent files setting
+		 * Controls how many files to include in the changelog
+		 */
 		new Setting(containerEl)
 			.setName("Max recent files")
 			.setDesc("Maximum number of recently edited files to include")
@@ -161,16 +175,19 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 					}),
 			);
 
-		// Excluded folders section header
+		/** Excluded folders section header */
 		containerEl.createEl("h3", { text: "Excluded folders" });
 
-		// Create a list of currently excluded folders with delete buttons
+		/** Create a list of currently excluded folders with delete buttons */
 		const excludedFoldersList = containerEl.createDiv(
 			"excluded-folders-list",
 		);
 		this.renderExcludedFolders(excludedFoldersList);
 
-		// Add a new excluded folder with path suggestions
+		/**
+		 * Add a new excluded folder with path suggestions
+		 * Allows users to specify folders to exclude from the changelog
+		 */
 		new Setting(containerEl)
 			.setName("Add excluded folder")
 			.setDesc("Folders to exclude from the changelog")

@@ -17,11 +17,17 @@ export class PathSuggest extends AbstractInputSuggest<string> {
 		this.inputEl = inputEl;
 	}
 
-	// Get suggestions based on input
+	/**
+	 * Get suggestions based on user input
+	 * @param inputStr The current input string to match against
+	 * @returns Array of matching path suggestions
+	 */
 	getSuggestions(inputStr: string): string[] {
 		const lowerCaseInputStr = inputStr.toLowerCase();
 
-		// Get all folders
+		/**
+		 * Get all folders and markdown files from the vault
+		 */
 		const folders = this.app.vault.getAllFolders();
 		const files = this.app.vault
 			.getFiles()
@@ -29,7 +35,10 @@ export class PathSuggest extends AbstractInputSuggest<string> {
 
 		const suggestions: string[] = [];
 
-		// Add folder suggestions with trailing slash
+		/**
+		 * Add folder suggestions with trailing slash
+		 * Folders are appended with "/" to indicate they are directories
+		 */
 		folders.forEach((folder) => {
 			const folderPath = folder.path;
 			if (folderPath.toLowerCase().contains(lowerCaseInputStr)) {
@@ -37,7 +46,10 @@ export class PathSuggest extends AbstractInputSuggest<string> {
 			}
 		});
 
-		// Add markdown files
+		/**
+		 * Add markdown files to suggestions
+		 * Only includes files with .md extension
+		 */
 		files.forEach((file) => {
 			const filePath = file.path;
 			if (filePath.toLowerCase().contains(lowerCaseInputStr)) {
@@ -48,12 +60,22 @@ export class PathSuggest extends AbstractInputSuggest<string> {
 		return suggestions;
 	}
 
-	// Render the suggestion
+	/**
+	 * Render the suggestion in the dropdown
+	 *
+	 * @param path The path to render
+	 * @param el The HTML element to render into
+	 */
 	renderSuggestion(path: string, el: HTMLElement): void {
 		el.setText(path);
 	}
 
-	// Select the suggestion
+	/**
+	 * Handle suggestion selection
+	 * Updates the input field and triggers input event
+	 *
+	 * @param path The selected path
+	 */
 	selectSuggestion(path: string): void {
 		this.inputEl.value = path;
 		this.inputEl.trigger("input");

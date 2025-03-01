@@ -28,8 +28,10 @@ import {
  *    - CONSIDER: Exclude files by content (e.g., containing specific frontmatter)
  */
 
-// TODO: Move CSS to a separate styles.css file and load it using obsidian's addStyle API
-// Add styles for the excluded folders list
+/**
+ * TODO: Move CSS to a separate styles.css file and load it using obsidian's addStyle API
+ * Add styles for the excluded folders list
+ */
 const EXCLUDED_FOLDERS_STYLES = `
 .excluded-folders-list {
 	margin-bottom: 1em;
@@ -81,13 +83,16 @@ export default class ChangelogPlugin extends Plugin {
 		this.styleEl.textContent = EXCLUDED_FOLDERS_STYLES;
 		document.head.appendChild(this.styleEl);
 
+		/** Debounce vault change handler to avoid excessive updates */
 		this.onVaultChange = debounce(this.onVaultChange.bind(this), 200);
 		this.enableAutoUpdate();
 	}
 
 	onunload() {
-		// TODO: Update this when styles are moved to external CSS file
-		// Remove styles when plugin is disabled
+		/**
+		 * TODO: Update this when styles are moved to external CSS file
+		 * Remove styles when plugin is disabled
+		 */
 		if (this.styleEl && this.styleEl.parentNode) {
 			this.styleEl.parentNode.removeChild(this.styleEl);
 		}
@@ -107,6 +112,12 @@ export default class ChangelogPlugin extends Plugin {
 		this.app.vault.off("rename", this.onVaultChange);
 	}
 
+	/**
+	 * Handler for vault change events
+	 * Only updates changelog if the changed file isn't the changelog itself
+	 *
+	 * @param file The file that was changed
+	 */
 	onVaultChange(file: TFile) {
 		if (file.path !== this.settings.changelogPath) {
 			this.updateChangelog();
