@@ -1,6 +1,9 @@
 {
 	"compilerOptions": {
 		"lib": ["es2018", "dom"]
+		// CONSIDER: Add stricter type checking options
+		// CONSIDER: Consider enabling strict mode
+		// CONSIDER: Add source maps for better debugging
 	},
 	"include": ["src/*.ts"]
 }

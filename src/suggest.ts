@@ -1,6 +1,14 @@
 import { AbstractInputSuggest, App } from "obsidian";
 
-// Suggests folders and .md files for the changelog path
+/**
+ * Path suggestion provider for file path inputs
+ *
+ * Enhancements to consider:
+ * - Create a TagSuggest class for tag exclusion feature
+ * - Improve prioritization of suggestions for changelog paths
+ * - Add smarter filtering based on context (e.g., folder vs file)
+ * - Add icons to differentiate between files and folders in suggestions
+ */
 export class PathSuggest extends AbstractInputSuggest<string> {
 	inputEl: HTMLInputElement;
 

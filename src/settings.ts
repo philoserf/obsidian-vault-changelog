@@ -10,7 +10,17 @@ import {
 import ChangelogPlugin from "./main";
 import { PathSuggest } from "./suggest";
 
-// Define the settings interface
+/**
+ * Settings interface for the Vault Changelog plugin
+ *
+ * Future settings to consider:
+ * - Custom entry template (format for each changelog entry)
+ * - Group entries by date (create headings for each date)
+ * - Exclude files by tag (filter out files with specific tags)
+ * - Append mode (add to existing changelog instead of overwriting)
+ * - Entry sorting options (beyond just modification time)
+ * - Custom file metadata to include (e.g., tags, properties)
+ */
 export interface ChangelogSettings {
 	autoUpdate: boolean;
 	changelogPath: string;
@@ -67,6 +77,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 		});
 	}
 
+	// Display the settings tab
 	display() {
 		const { containerEl } = this;
 		const { settings } = this.plugin;
@@ -88,6 +99,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 				}),
 			);
 
+		// Changelog path
 		new Setting(containerEl)
 			.setName("Changelog path")
 			.setDesc("Relative path including filename and extension")
@@ -103,6 +115,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 				new PathSuggest(this.app, text.inputEl);
 			});
 
+		// Datetime format
 		new Setting(containerEl)
 			.setName("Datetime format")
 			.setDesc("Moment.js datetime format string")
@@ -129,6 +142,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 					}),
 			);
 
+		// Max recent
 		new Setting(containerEl)
 			.setName("Max recent files")
 			.setDesc("Maximum number of recently edited files to include")

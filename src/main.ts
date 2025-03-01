@@ -6,8 +6,30 @@ import {
 	DEFAULT_SETTINGS,
 } from "./settings";
 
+/**
+ * ROADMAP: Obsidian Vault Changelog Plugin
+ *
+ * 1. UI Improvements
+ *    - CONSIDER: Add ribbon icon for quick access to update changelog
+ *    - CONSIDER: Add status bar item showing last changelog update time
+ *
+ * 2. Content Formatting
+ *    - CONSIDER: Support custom templates for changelog entries
+ *    - CONSIDER: Allow grouping entries by date/folder
+ *    - CONSIDER: Add option to include a header with update time/date
+ *
+ * 3. File Handling
+ *    - CONSIDER: Option to append to existing changelog instead of overwriting
+ *    - CONSIDER: Support for multiple changelog files (e.g., by category)
+ *
+ * 4. Filtering Options
+ *    - CONSIDER: Support for excluding files by tag
+ *    - CONSIDER: Support for excluding files by filename pattern (regex)
+ *    - CONSIDER: Exclude files by content (e.g., containing specific frontmatter)
+ */
+
+// TODO: Move CSS to a separate styles.css file and load it using obsidian's addStyle API
 // Add styles for the excluded folders list
-// TODO: Move this to a styles.css file
 const EXCLUDED_FOLDERS_STYLES = `
 .excluded-folders-list {
 	margin-bottom: 1em;
@@ -40,6 +62,9 @@ export default class ChangelogPlugin extends Plugin {
 	settings: ChangelogSettings = DEFAULT_SETTINGS;
 	private styleEl: HTMLStyleElement;
 
+	/**
+	 * Load the plugin, register commands, and set up event listeners
+	 */
 	async onload() {
 		await this.loadSettings();
 		this.addSettingTab(new ChangelogSettingsTab(this.app, this));
@@ -50,6 +75,7 @@ export default class ChangelogPlugin extends Plugin {
 			callback: () => this.updateChangelog(),
 		});
 
+		// TODO: Replace this with loading styles from external CSS file
 		// Add styles for the excluded folders feature
 		this.styleEl = document.createElement("style");
 		this.styleEl.textContent = EXCLUDED_FOLDERS_STYLES;
@@ -60,6 +86,7 @@ export default class ChangelogPlugin extends Plugin {
 	}
 
 	onunload() {
+		// TODO: Update this when styles are moved to external CSS file
 		// Remove styles when plugin is disabled
 		if (this.styleEl && this.styleEl.parentNode) {
 			this.styleEl.parentNode.removeChild(this.styleEl);
@@ -91,6 +118,11 @@ export default class ChangelogPlugin extends Plugin {
 		await this.writeToFile(this.settings.changelogPath, changelog);
 	}
 
+	/**
+	 * Generate the changelog content based on recently edited files
+	 *
+	 * @returns A string containing the formatted changelog
+	 */
 	async generateChangelog() {
 		const recentFiles = this.getRecentlyEditedFiles();
 
@@ -105,6 +137,11 @@ export default class ChangelogPlugin extends Plugin {
 		return changelogContent;
 	}
 
+	/**
+	 * Get a list of recently edited files, filtering out excluded files
+	 *
+	 * @returns An array of TFile objects sorted by modification time
+	 */
 	getRecentlyEditedFiles() {
 		return this.app.vault
 			.getMarkdownFiles()
@@ -127,6 +164,12 @@ export default class ChangelogPlugin extends Plugin {
 			.slice(0, this.settings.maxRecentFiles);
 	}
 
+	/**
+	 * Write content to a file, creating it if it doesn't exist
+	 *
+	 * @param path The path to the file
+	 * @param content The content to write
+	 */
 	async writeToFile(path: string, content: string) {
 		let file = this.app.vault.getAbstractFileByPath(path);
 		if (!file) {
