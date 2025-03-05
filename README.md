@@ -49,61 +49,8 @@ On behalf of the Obsidian community, we extend our gratitude to Badr for this va
 - **Max recent files**: Number of tracked files (`25` by default).
 - **Excluded folders**: Folders to exclude from the changelog (empty by default).
 
-## Changelog
+## Documentation
 
-### 1.1.0
-
-- Added folder suggestion for the "Changelog path"
-- Added "Excluded folders"
-- Added input validation for "Datetime format" and "Max recent files"
-
-### 1.0.0
-
-- Transferred to a new maintainer.
-- Fixed file creation bug.
-- Improved error messages for file creation failures.
-- Added date format customization.
-- Refactored code to align with Obsidian community guidelines.
-- Updated README with revised installation and usage instructions.
-- Added LICENSE file.
-
-### 0.1.0
-
-- Initial release by Badr Bouslikhin.
-
-## Code of Conduct
-
-We are all human beings, being human.  
-Treat each other with respect and decorum.  
-Assume good intentions.  
-Practice a **"Yes, and"** worldview.
-
-## Contributing
-
-💡 Want to improve the plugin? Here’s how you can help:
-
-- **Discussions**: [GitHub Discussions](https://github.com/philoserf/obsidian-vault-changelog/discussions)
-- **Bug Reports**: [Open an Issue](https://github.com/philoserf/obsidian-vault-changelog/issues)
-- **Feature Requests**: [Open a Pull Request](https://github.com/philoserf/obsidian-vault-changelog/pulls)
-- **Community**: [Obsidian Forum](https://forum.obsidian.md) | [Obsidian Discord](https://discord.gg/obsidianmd)
-
-## Development
-
-1. Clone this repository `gh repo clone philoserf/obsidian-vault-changelog`.
-2. Install dependencies with `npm install`.
-3. Build the project with `npm run build`.
-
-### Using the test-vault
-
-The project includes a test-vault for development:
-
-1. Open the test-vault in Obsidian (`File > Open another vault > Open folder as vault` and select the `test-vault` directory)
-2. Build the plugin with hot-reload: `npm run dev`
-3. Changes will automatically be applied to the plugin in the test-vault
-
-### Manual installation
-
-Alternatively, you can manually install the plugin in your own vault:
-
-1. Copy `manifest.json` and `main.js` into your **Obsidian plugins folder** (`.obsidian/plugins/obsidian-vault-changelog`).
-2. Reload Obsidian and enable the plugin.
+- [Changelog](CHANGELOG.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Contributing Guide](CONTRIBUTING.md)
