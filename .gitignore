@@ -1,16 +1,24 @@
+# Build artifacts
 main.js
 main.js.map
+
+# Dependencies
 node_modules/
-test-vault/.obsidian/plugins/obsidian-vault-changelog/
-!test-vault/.obsidian/plugins/journals/.hotreload
+
+# Test vault - plugins
 test-vault/.obsidian/plugins/*
-!test-vault/.obsidian/plugins/hotreload/main.js
-!test-vault/.obsidian/plugins/hotreload/manifest.json
+!test-vault/.obsidian/plugins/journals/.hotreload
+!test-vault/.obsidian/plugins/hot-reload/main.js
+!test-vault/.obsidian/plugins/hot-reload/manifest.json
+
+# Test vault - config files
 test-vault/.obsidian/app.json
 test-vault/.obsidian/appearance.json
 test-vault/.obsidian/core-plugins-migration.json
 test-vault/.obsidian/core-plugins.json
 test-vault/.obsidian/workspace.json
+
+# Test vault - markdown files
 test-vault/**/*.md
 !test-vault/Change.md
 !test-vault/Changelog.md
