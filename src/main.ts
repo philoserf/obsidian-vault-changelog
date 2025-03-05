@@ -6,39 +6,8 @@ import {
 	DEFAULT_SETTINGS,
 } from "./settings";
 
-// Add styles for the excluded folders list
-// TODO: Move this to a styles.css file
-const EXCLUDED_FOLDERS_STYLES = `
-.excluded-folders-list {
-	margin-bottom: 1em;
-}
-
-.excluded-folder-item {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	background-color: var(--background-secondary);
-	border-radius: 4px;
-	padding: 4px 8px;
-	margin-bottom: 6px;
-}
-
-.excluded-folder-remove {
-	cursor: pointer;
-	border: none;
-	background: transparent;
-	color: var(--text-muted);
-	padding: 0 4px;
-	font-size: 14px;
-}
-
-.excluded-folder-remove:hover {
-	color: var(--text-error);
-}`;
-
 export default class ChangelogPlugin extends Plugin {
 	settings: ChangelogSettings = DEFAULT_SETTINGS;
-	private styleEl: HTMLStyleElement;
 
 	async onload() {
 		await this.loadSettings();
@@ -50,20 +19,28 @@ export default class ChangelogPlugin extends Plugin {
 			callback: () => this.updateChangelog(),
 		});
 
-		// Add styles for the excluded folders feature
-		this.styleEl = document.createElement("style");
-		this.styleEl.textContent = EXCLUDED_FOLDERS_STYLES;
-		document.head.appendChild(this.styleEl);
+		this.loadStyles();
 
 		this.onVaultChange = debounce(this.onVaultChange.bind(this), 200);
 		this.enableAutoUpdate();
 	}
 
 	onunload() {
-		// Remove styles when plugin is disabled
-		if (this.styleEl && this.styleEl.parentNode) {
-			this.styleEl.parentNode.removeChild(this.styleEl);
-		}
+		// Cleanup happens automatically
+	}
+
+	async loadStyles() {
+		const cssFile = await this.app.vault.adapter.read(
+			this.manifest.dir + "/styles.css",
+		);
+		this.registerStyles(cssFile);
+	}
+
+	registerStyles(cssText: string) {
+		const styleEl = document.createElement("style");
+		styleEl.textContent = cssText;
+		this.register(() => styleEl.remove());
+		document.head.appendChild(styleEl);
 	}
 
 	enableAutoUpdate() {
