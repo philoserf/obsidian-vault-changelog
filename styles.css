@@ -1,0 +1,26 @@
+.excluded-folders-list {
+	margin-bottom: 1em;
+}
+
+.excluded-folder-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	background-color: var(--background-secondary);
+	border-radius: 4px;
+	padding: 4px 8px;
+	margin-bottom: 6px;
+}
+
+.excluded-folder-remove {
+	cursor: pointer;
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	padding: 0 4px;
+	font-size: 14px;
+}
+
+.excluded-folder-remove:hover {
+	color: var(--text-error);
+}
