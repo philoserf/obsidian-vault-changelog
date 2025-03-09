@@ -1,0 +1,15 @@
+[install]
+# Use the frozen-lockfile flag by default to avoid accidental lockfile updates
+frozen = true 
+
+[test]
+# Configuration for bun test if you add tests later
+coverage = true
+
+[build]
+# Default build settings
+minify = true
+sourcemap = "external"
+target = "browser"
+format = "cjs"
+external = ["obsidian"]
