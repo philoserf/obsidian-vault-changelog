@@ -2,7 +2,7 @@
 	"scripts": {
 		"build": "node esbuild.config.mjs production",
 		"dev": "node esbuild.config.mjs",
-		"format": "prettier --write --list --ignore-unknown .",
+		"format": "prettier --write --ignore-unknown .",
 		"lint": "eslint ."
 	},
 	"devDependencies": {
