@@ -1,3 +1,15 @@
+/**
+ * settings.ts - Settings management for the Vault Changelog plugin
+ *
+ * This file defines the plugin's configuration interface, default values,
+ * and the settings UI tab. It handles user preferences for:
+ * - Auto-updating the changelog
+ * - Setting the changelog file path
+ * - Configuring datetime formats
+ * - Setting maximum number of files to track
+ * - Managing excluded folders
+ */
+
 import {
 	App,
 	Notice,
@@ -10,16 +22,29 @@ import {
 import ChangelogPlugin from "./main";
 import { PathSuggest } from "./suggest";
 
-// Define the settings interface
+/**
+ * Interface defining all configurable settings for the Vault Changelog plugin
+ */
 export interface ChangelogSettings {
+	/** Whether to automatically update the changelog when files are modified */
 	autoUpdate: boolean;
+
+	/** Path to the changelog file */
 	changelogPath: string;
+
+	/** Format string for timestamps (using Moment.js syntax) */
 	datetimeFormat: string;
+
+	/** Maximum number of files to include in the changelog */
 	maxRecentFiles: number;
+
+	/** Array of folder paths to exclude from the changelog */
 	excludedFolders: string[];
 }
 
-// Define the default settings
+/**
+ * Default configuration values for the plugin
+ */
 export const DEFAULT_SETTINGS: ChangelogSettings = {
 	autoUpdate: false,
 	changelogPath: "Changelog.md",
@@ -28,16 +53,30 @@ export const DEFAULT_SETTINGS: ChangelogSettings = {
 	excludedFolders: [],
 };
 
-// Define the settings tab
+/**
+ * Settings tab implementation for the Vault Changelog plugin
+ * Provides the UI for configuring all plugin settings
+ *
+ * @see {@link https://github.com/obsidianmd/obsidian-api/blob/master/obsidian.d.ts#L2596|PluginSettingTab}
+ */
 export class ChangelogSettingsTab extends PluginSettingTab {
+	/** Reference to the parent plugin instance */
 	plugin: ChangelogPlugin;
 
+	/**
+	 * Creates a new settings tab instance
+	 * @param app - The Obsidian app instance
+	 * @param plugin - The plugin instance
+	 */
 	constructor(app: App, plugin: ChangelogPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
 
-	// Helper method to render the list of excluded folders
+	/**
+	 * Renders the list of excluded folders with remove buttons
+	 * @param container - The HTML element to render the list into
+	 */
 	renderExcludedFolders(container: HTMLElement) {
 		container.empty();
 
@@ -56,8 +95,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 			});
 
 			removeButton.addEventListener("click", async () => {
-				const index =
-					this.plugin.settings.excludedFolders.indexOf(folder);
+				const index = this.plugin.settings.excludedFolders.indexOf(folder);
 				if (index > -1) {
 					this.plugin.settings.excludedFolders.splice(index, 1);
 					await this.plugin.saveSettings();
@@ -67,6 +105,13 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 		});
 	}
 
+	/**
+	 * Renders the settings UI in the Obsidian settings tab
+	 * Creates all input elements and handles their change events
+	 *
+	 * @see {@link https://github.com/obsidianmd/obsidian-api/blob/master/obsidian.d.ts#L2601|PluginSettingTab.display}
+	 * @see {@link https://github.com/obsidianmd/obsidian-api/blob/master/obsidian.d.ts#L2521|Setting}
+	 */
 	display() {
 		const { containerEl } = this;
 		const { settings } = this.plugin;
@@ -92,7 +137,8 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 			.setName("Changelog path")
 			.setDesc("Relative path including filename and extension")
 			.addText((text) => {
-				text.setPlaceholder("Folder/Changelog.md")
+				text
+					.setPlaceholder("Folder/Changelog.md")
 					.setValue(settings.changelogPath)
 					.onChange(async (path) => {
 						settings.changelogPath = normalizePath(path);
@@ -113,8 +159,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 					.onChange(async (format) => {
 						// Attempt to format current date with the new format string
 						// Returns "Invalid date" if the format is invalid
-						const isValid =
-							moment().format(format) !== "Invalid date";
+						const isValid = moment().format(format) !== "Invalid date";
 
 						if (!isValid) {
 							// Revert to previous valid format and notify user
@@ -151,9 +196,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 		containerEl.createEl("h3", { text: "Excluded folders" });
 
 		// Create a list of currently excluded folders with delete buttons
-		const excludedFoldersList = containerEl.createDiv(
-			"excluded-folders-list",
-		);
+		const excludedFoldersList = containerEl.createDiv("excluded-folders-list");
 		this.renderExcludedFolders(excludedFoldersList);
 
 		// Add a new excluded folder with path suggestions
@@ -168,14 +211,10 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 			})
 			.addButton((button) => {
 				button.setButtonText("Add").onClick(async () => {
-					const input =
-						button.buttonEl.parentElement?.querySelector("input");
+					const input = button.buttonEl.parentElement?.querySelector("input");
 					if (input) {
 						const folderPath = input.value;
-						if (
-							folderPath &&
-							!settings.excludedFolders.includes(folderPath)
-						) {
+						if (folderPath && !settings.excludedFolders.includes(folderPath)) {
 							settings.excludedFolders.push(folderPath);
 							await this.plugin.saveSettings();
 							input.value = "";
