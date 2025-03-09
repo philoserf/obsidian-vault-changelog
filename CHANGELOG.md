@@ -17,9 +17,9 @@
 - Improved internal documentation
 - Added Dependabot configuration for GitHub Actions
 - Updated development dependencies:
-    - TypeScript from 5.7.3 to 5.8.2
-    - TypeScript ESLint parser from 8.25.0 to 8.26.0
-    - TypeScript ESLint plugin to 8.26.0
+  - TypeScript from 5.7.3 to 5.8.2
+  - TypeScript ESLint parser from 8.25.0 to 8.26.0
+  - TypeScript ESLint plugin to 8.26.0
 
 ## 1.1.0
 

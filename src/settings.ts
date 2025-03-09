@@ -95,8 +95,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 			});
 
 			removeButton.addEventListener("click", async () => {
-				const index =
-					this.plugin.settings.excludedFolders.indexOf(folder);
+				const index = this.plugin.settings.excludedFolders.indexOf(folder);
 				if (index > -1) {
 					this.plugin.settings.excludedFolders.splice(index, 1);
 					await this.plugin.saveSettings();
@@ -138,7 +137,8 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 			.setName("Changelog path")
 			.setDesc("Relative path including filename and extension")
 			.addText((text) => {
-				text.setPlaceholder("Folder/Changelog.md")
+				text
+					.setPlaceholder("Folder/Changelog.md")
 					.setValue(settings.changelogPath)
 					.onChange(async (path) => {
 						settings.changelogPath = normalizePath(path);
@@ -159,8 +159,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 					.onChange(async (format) => {
 						// Attempt to format current date with the new format string
 						// Returns "Invalid date" if the format is invalid
-						const isValid =
-							moment().format(format) !== "Invalid date";
+						const isValid = moment().format(format) !== "Invalid date";
 
 						if (!isValid) {
 							// Revert to previous valid format and notify user
@@ -197,9 +196,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 		containerEl.createEl("h3", { text: "Excluded folders" });
 
 		// Create a list of currently excluded folders with delete buttons
-		const excludedFoldersList = containerEl.createDiv(
-			"excluded-folders-list",
-		);
+		const excludedFoldersList = containerEl.createDiv("excluded-folders-list");
 		this.renderExcludedFolders(excludedFoldersList);
 
 		// Add a new excluded folder with path suggestions
@@ -214,14 +211,10 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 			})
 			.addButton((button) => {
 				button.setButtonText("Add").onClick(async () => {
-					const input =
-						button.buttonEl.parentElement?.querySelector("input");
+					const input = button.buttonEl.parentElement?.querySelector("input");
 					if (input) {
 						const folderPath = input.value;
-						if (
-							folderPath &&
-							!settings.excludedFolders.includes(folderPath)
-						) {
+						if (folderPath && !settings.excludedFolders.includes(folderPath)) {
 							settings.excludedFolders.push(folderPath);
 							await this.plugin.saveSettings();
 							input.value = "";
