@@ -1,17 +1,17 @@
 {
 	"scripts": {
-		"build": "node esbuild.config.mjs production",
-		"dev": "node esbuild.config.mjs",
-		"format": "prettier --write --ignore-unknown .",
-		"lint": "eslint ."
+		"build": "bun build.mjs production",
+		"dev": "bun build.mjs",
+		"format": "bun prettier --write --ignore-unknown .",
+		"lint": "bun run eslint"
 	},
 	"devDependencies": {
 		"@typescript-eslint/eslint-plugin": "^8.26.0",
 		"@typescript-eslint/parser": "^8.26.0",
-		"esbuild": "^0.25.0",
 		"eslint": "^9.21.0",
 		"eslint-config-prettier": "^10.0.2",
 		"obsidian": "^1.8.7",
+		"prettier": "^3.5.3",
 		"typescript": "^5.8.2"
 	}
 }

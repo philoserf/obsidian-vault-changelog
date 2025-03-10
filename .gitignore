@@ -1,9 +1,13 @@
 # Build artifacts
-main.js
+**/*.js
 main.js.map
 
 # Dependencies
 node_modules/
+
+# Bun
+.bun/
+# bun.lock - We want to track the lock file
 
 # Test vault - plugins
 test-vault/.obsidian/plugins/*
