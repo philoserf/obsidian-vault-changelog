@@ -7,10 +7,10 @@
  * implements the plugin lifecycle methods.
  */
 
-import { Notice, Plugin, TFile, debounce, moment } from "obsidian";
+import { Notice, Plugin, TAbstractFile, TFile, debounce } from "obsidian";
 
 import {
-	ChangelogSettings,
+	type ChangelogSettings,
 	ChangelogSettingsTab,
 	DEFAULT_SETTINGS,
 } from "./settings";
@@ -89,21 +89,33 @@ export default class ChangelogPlugin extends Plugin {
 	 */
 	enableAutoUpdate() {
 		if (this.settings.autoUpdate) {
-			this.registerEvent(this.app.vault.on("modify", this.onVaultChange));
-			this.registerEvent(this.app.vault.on("delete", this.onVaultChange));
-			this.registerEvent(this.app.vault.on("rename", this.onVaultChange));
-		}
-	}
+			// Handler for modify events
+			this.registerEvent(
+				this.app.vault.on("modify", (file: TAbstractFile) => {
+					if (file instanceof TFile) {
+						this.onVaultChange(file);
+					}
+				}),
+			);
 
-	/**
-	 * Disables automatic changelog updates by removing file system event listeners
-	 *
-	 * @see {@link https://github.com/obsidianmd/obsidian-api/blob/master/obsidian.d.ts#L3255|Vault.off}
-	 */
-	disableAutoUpdate() {
-		this.app.vault.off("modify", this.onVaultChange);
-		this.app.vault.off("delete", this.onVaultChange);
-		this.app.vault.off("rename", this.onVaultChange);
+			// Handler for delete events
+			this.registerEvent(
+				this.app.vault.on("delete", (file: TAbstractFile) => {
+					if (file instanceof TFile) {
+						this.onVaultChange(file);
+					}
+				}),
+			);
+
+			// Handler for rename events (has different signature with oldPath parameter)
+			this.registerEvent(
+				this.app.vault.on("rename", (file: TAbstractFile) => {
+					if (file instanceof TFile) {
+						this.onVaultChange(file);
+					}
+				}),
+			);
+		}
 	}
 
 	/**
@@ -137,9 +149,9 @@ export default class ChangelogPlugin extends Plugin {
 
 		let changelogContent = "";
 		recentFiles.forEach((file) => {
-			const formattedTime = moment(file.stat.mtime).format(
-				this.settings.datetimeFormat,
-			);
+			// Use window.moment to prevent TypeScript error with the imported moment
+			const m = window.moment(file.stat.mtime);
+			const formattedTime = m.format(this.settings.datetimeFormat);
 			changelogContent += `- ${formattedTime} · [[${file.basename}]]\n`;
 		});
 

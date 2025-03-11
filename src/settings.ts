@@ -15,7 +15,6 @@ import {
 	Notice,
 	PluginSettingTab,
 	Setting,
-	moment,
 	normalizePath,
 } from "obsidian";
 
@@ -127,8 +126,6 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 					if (value) {
 						this.plugin.enableAutoUpdate();
-					} else {
-						this.plugin.disableAutoUpdate();
 					}
 				}),
 			);
@@ -159,7 +156,9 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 					.onChange(async (format) => {
 						// Attempt to format current date with the new format string
 						// Returns "Invalid date" if the format is invalid
-						const isValid = moment().format(format) !== "Invalid date";
+						// Use window.moment to prevent TypeScript error
+						const m = window.moment();
+						const isValid = m.format(format) !== "Invalid date";
 
 						if (!isValid) {
 							// Revert to previous valid format and notify user
