@@ -1,9 +1,27 @@
 {
 	"compilerOptions": {
-		"target": "ES2018",
-		"moduleResolution": "node",
-		"lib": ["DOM", "ES2018"],
-		"strict": true
+		// Language and Environment
+		"lib": ["DOM", "ESNext"],
+		"target": "ESNext",
+
+		// Modules
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"verbatimModuleSyntax": true,
+		"esModuleInterop": true,
+
+		// Emit
+		"noEmit": true,
+		"declaration": false,
+
+		// Type Checking
+		"strict": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedIndexedAccess": true,
+
+		// Completeness
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true
 	},
 	"include": ["src/**/*.ts"]
 }
