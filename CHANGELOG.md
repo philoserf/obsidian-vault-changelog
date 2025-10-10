@@ -7,6 +7,7 @@
 - Test vault for easier development and testing
 - Hot-reload plugin to test vault for seamless development
 - "Use wiki-links" setting to optionally disable wiki-link formatting (addresses #9)
+- "Changelog heading" setting to optionally prepend a heading to the changelog (addresses #4)
 
 ### Changed
 

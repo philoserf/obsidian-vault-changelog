@@ -42,6 +42,9 @@ export interface ChangelogSettings {
 
 	/** Whether to use wiki-links ([[note]]) or plain text in changelog entries */
 	useWikiLinks: boolean;
+
+	/** Optional heading to prepend to the changelog (empty string means no heading) */
+	changelogHeading: string;
 }
 
 /**
@@ -54,6 +57,7 @@ export const DEFAULT_SETTINGS: ChangelogSettings = {
 	maxRecentFiles: 25,
 	excludedFolders: [],
 	useWikiLinks: true,
+	changelogHeading: "",
 };
 
 /**
@@ -203,6 +207,21 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 					settings.useWikiLinks = value;
 					await this.plugin.saveSettings();
 				}),
+			);
+
+		new Setting(containerEl)
+			.setName("Changelog heading")
+			.setDesc(
+				"Optional heading to prepend to the changelog (e.g., # Changelog). Leave empty for no heading.",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("# Changelog")
+					.setValue(settings.changelogHeading)
+					.onChange(async (value) => {
+						settings.changelogHeading = value;
+						await this.plugin.saveSettings();
+					}),
 			);
 
 		// Excluded folders section header

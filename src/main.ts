@@ -148,6 +148,12 @@ export default class ChangelogPlugin extends Plugin {
 		const recentFiles = this.getRecentlyEditedFiles();
 
 		let changelogContent = "";
+
+		// Add optional heading if configured
+		if (this.settings.changelogHeading) {
+			changelogContent += `${this.settings.changelogHeading}\n\n`;
+		}
+
 		recentFiles.forEach((file) => {
 			// Use window.moment to prevent TypeScript error with the imported moment
 			const m = window.moment(file.stat.mtime);

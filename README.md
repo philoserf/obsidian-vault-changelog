@@ -48,6 +48,14 @@ With wiki-links disabled:
 - 2024-01-28T14:25 · Another Note
 ```
 
+With a heading configured:
+```markdown
+# Changelog
+
+- 2024-01-28T14:30 · [[Note Title]]
+- 2024-01-28T14:25 · [[Another Note]]
+```
+
 ## Settings
 
 - **Auto update**: Enable automatic updates (`false` by default).
@@ -55,6 +63,7 @@ With wiki-links disabled:
 - **Datetime format**: Moment.js format string (`YYYY-MM-DD[T]HHmm` by default).
 - **Max recent files**: Number of tracked files (`25` by default).
 - **Use wiki-links**: Format filenames as wiki-links `[[note]]` instead of plain text (`true` by default).
+- **Changelog heading**: Optional heading to prepend to the changelog (empty by default). Example: `# Changelog`
 - **Excluded folders**: Folders to exclude from the changelog (empty by default).
 
 ## Documentation
