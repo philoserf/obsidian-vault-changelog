@@ -39,6 +39,12 @@ export interface ChangelogSettings {
 
 	/** Array of folder paths to exclude from the changelog */
 	excludedFolders: string[];
+
+	/** Whether to use wiki-links ([[note]]) or plain text in changelog entries */
+	useWikiLinks: boolean;
+
+	/** Optional heading to prepend to the changelog (empty string means no heading) */
+	changelogHeading: string;
 }
 
 /**
@@ -50,6 +56,8 @@ export const DEFAULT_SETTINGS: ChangelogSettings = {
 	datetimeFormat: "YYYY-MM-DD[T]HHmm",
 	maxRecentFiles: 25,
 	excludedFolders: [],
+	useWikiLinks: true,
+	changelogHeading: "",
 };
 
 /**
@@ -187,6 +195,31 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 							return;
 						}
 						settings.maxRecentFiles = numValue;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Use wiki-links")
+			.setDesc("Format filenames as wiki-links [[note]] instead of plain text")
+			.addToggle((toggle) =>
+				toggle.setValue(settings.useWikiLinks).onChange(async (value) => {
+					settings.useWikiLinks = value;
+					await this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName("Changelog heading")
+			.setDesc(
+				"Optional heading to prepend to the changelog (e.g., # Changelog). Leave empty for no heading.",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("# Changelog")
+					.setValue(settings.changelogHeading)
+					.onChange(async (value) => {
+						settings.changelogHeading = value;
 						await this.plugin.saveSettings();
 					}),
 			);

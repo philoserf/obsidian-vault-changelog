@@ -148,11 +148,23 @@ export default class ChangelogPlugin extends Plugin {
 		const recentFiles = this.getRecentlyEditedFiles();
 
 		let changelogContent = "";
+
+		// Add optional heading if configured
+		if (this.settings.changelogHeading) {
+			changelogContent += `${this.settings.changelogHeading}\n\n`;
+		}
+
 		recentFiles.forEach((file) => {
 			// Use window.moment to prevent TypeScript error with the imported moment
 			const m = window.moment(file.stat.mtime);
 			const formattedTime = m.format(this.settings.datetimeFormat);
-			changelogContent += `- ${formattedTime} · [[${file.basename}]]\n`;
+
+			// Format filename based on useWikiLinks setting
+			const fileName = this.settings.useWikiLinks
+				? `[[${file.basename}]]`
+				: file.basename;
+
+			changelogContent += `- ${formattedTime} · ${fileName}\n`;
 		});
 
 		return changelogContent;
