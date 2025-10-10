@@ -36,9 +36,16 @@ On behalf of the Obsidian community, we extend our gratitude to Badr for this va
 
 ## Example Output
 
+With wiki-links enabled (default):
 ```markdown
 - 2024-01-28T14:30 · [[Note Title]]
 - 2024-01-28T14:25 · [[Another Note]]
+```
+
+With wiki-links disabled:
+```markdown
+- 2024-01-28T14:30 · Note Title
+- 2024-01-28T14:25 · Another Note
 ```
 
 ## Settings
@@ -47,6 +54,7 @@ On behalf of the Obsidian community, we extend our gratitude to Badr for this va
 - **Changelog path**: File location for the changelog (`Changelog.md` by default).
 - **Datetime format**: Moment.js format string (`YYYY-MM-DD[T]HHmm` by default).
 - **Max recent files**: Number of tracked files (`25` by default).
+- **Use wiki-links**: Format filenames as wiki-links `[[note]]` instead of plain text (`true` by default).
 - **Excluded folders**: Folders to exclude from the changelog (empty by default).
 
 ## Documentation

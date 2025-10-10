@@ -152,7 +152,13 @@ export default class ChangelogPlugin extends Plugin {
 			// Use window.moment to prevent TypeScript error with the imported moment
 			const m = window.moment(file.stat.mtime);
 			const formattedTime = m.format(this.settings.datetimeFormat);
-			changelogContent += `- ${formattedTime} · [[${file.basename}]]\n`;
+
+			// Format filename based on useWikiLinks setting
+			const fileName = this.settings.useWikiLinks
+				? `[[${file.basename}]]`
+				: file.basename;
+
+			changelogContent += `- ${formattedTime} · ${fileName}\n`;
 		});
 
 		return changelogContent;

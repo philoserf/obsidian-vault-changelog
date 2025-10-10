@@ -6,6 +6,7 @@
 
 - Test vault for easier development and testing
 - Hot-reload plugin to test vault for seamless development
+- "Use wiki-links" setting to optionally disable wiki-link formatting (addresses #9)
 
 ### Changed
 
@@ -16,10 +17,14 @@
 
 - Improved internal documentation
 - Added Dependabot configuration for GitHub Actions
-- Updated development dependencies:
-  - TypeScript from 5.7.3 to 5.8.2
-  - TypeScript ESLint parser from 8.25.0 to 8.26.0
-  - TypeScript ESLint plugin to 8.26.0
+- Updated all development dependencies to latest versions:
+  - TypeScript 5.7.3 → 5.9.3
+  - TypeScript ESLint parser 8.25.0 → 8.46.0
+  - TypeScript ESLint plugin 8.25.0 → 8.46.0
+  - ESLint 9.22.0 → 9.37.0
+  - Prettier 3.5.3 → 3.6.2
+  - eslint-config-prettier 10.1.1 → 10.1.8
+  - Obsidian API 1.8.7 → 1.10.0
 
 ## 1.1.0
 
