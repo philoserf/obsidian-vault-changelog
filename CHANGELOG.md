@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.0
+
 ### Added
 
 - Test vault for easier development and testing
