@@ -13,6 +13,7 @@
 
 - Moved styles to external CSS file
 - Restructured documentation into separate files following GitHub standards
+- Improved README with use cases, intent description, and alternatives section (addresses #46)
 
 ### Maintenance
 
