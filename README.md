@@ -5,6 +5,7 @@ A plugin to maintain a change log of recently edited files in your Obsidian vaul
 ## Why Use This Plugin?
 
 **Vault Changelog** is ideal if you want:
+
 - **A persistent, text-based record** of recently edited files that survives vault moves and syncing
 - **Simple configuration** with a single command to update your changelog
 - **Minimal overhead** without needing to learn query syntax or manage complex workflows
@@ -55,18 +56,21 @@ On behalf of the Obsidian community, we extend our gratitude to Badr for this va
 ## Example Output
 
 With wiki-links enabled (default):
+
 ```markdown
 - 2024-01-28T14:30 · [[Note Title]]
 - 2024-01-28T14:25 · [[Another Note]]
 ```
 
 With wiki-links disabled:
+
 ```markdown
 - 2024-01-28T14:30 · Note Title
 - 2024-01-28T14:25 · Another Note
 ```
 
 With a heading configured:
+
 ```markdown
 # Changelog
 
