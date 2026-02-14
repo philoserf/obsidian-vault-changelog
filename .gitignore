@@ -28,3 +28,4 @@ test-vault/**/*.md
 !test-vault/Changelog.md
 !test-vault/Delete.md
 !test-vault/Home.md
+.planning/

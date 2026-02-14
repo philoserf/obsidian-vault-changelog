@@ -1,0 +1,188 @@
+{
+	"main": {
+		"id": "0e035f6e3ea28f97",
+		"type": "split",
+		"children": [
+			{
+				"id": "a29c6cb3fd45bf6b",
+				"type": "tabs",
+				"children": [
+					{
+						"id": "f1f1b3705999c290",
+						"type": "leaf",
+						"state": {
+							"type": "markdown",
+							"state": {
+								"file": "README.md",
+								"mode": "source",
+								"source": false
+							},
+							"icon": "lucide-file",
+							"title": "README"
+						}
+					}
+				]
+			}
+		],
+		"direction": "vertical"
+	},
+	"left": {
+		"id": "d3e3836f8f1498e4",
+		"type": "split",
+		"children": [
+			{
+				"id": "37753a5d4b3c9202",
+				"type": "tabs",
+				"children": [
+					{
+						"id": "9160b76f06900099",
+						"type": "leaf",
+						"state": {
+							"type": "file-explorer",
+							"state": {
+								"sortOrder": "alphabetical",
+								"autoReveal": false
+							},
+							"icon": "lucide-folder-closed",
+							"title": "Files"
+						}
+					},
+					{
+						"id": "10b0e47061c969b2",
+						"type": "leaf",
+						"state": {
+							"type": "search",
+							"state": {
+								"query": "",
+								"matchingCase": false,
+								"explainSearch": false,
+								"collapseAll": false,
+								"extraContext": false,
+								"sortOrder": "alphabetical"
+							},
+							"icon": "lucide-search",
+							"title": "Search"
+						}
+					},
+					{
+						"id": "5f59696e43cbfb52",
+						"type": "leaf",
+						"state": {
+							"type": "bookmarks",
+							"state": {},
+							"icon": "lucide-bookmark",
+							"title": "Bookmarks"
+						}
+					}
+				]
+			}
+		],
+		"direction": "horizontal",
+		"width": 300
+	},
+	"right": {
+		"id": "b77c249920c32bad",
+		"type": "split",
+		"children": [
+			{
+				"id": "0af1d599a2b100bd",
+				"type": "tabs",
+				"children": [
+					{
+						"id": "71e961b2d8df7ccb",
+						"type": "leaf",
+						"state": {
+							"type": "backlink",
+							"state": {
+								"file": "README.md",
+								"collapseAll": false,
+								"extraContext": false,
+								"sortOrder": "alphabetical",
+								"showSearch": false,
+								"searchQuery": "",
+								"backlinkCollapsed": false,
+								"unlinkedCollapsed": true
+							},
+							"icon": "links-coming-in",
+							"title": "Backlinks for README"
+						}
+					},
+					{
+						"id": "6264e167973e1627",
+						"type": "leaf",
+						"state": {
+							"type": "outgoing-link",
+							"state": {
+								"file": "README.md",
+								"linksCollapsed": false,
+								"unlinkedCollapsed": true
+							},
+							"icon": "links-going-out",
+							"title": "Outgoing links from README"
+						}
+					},
+					{
+						"id": "7741fa817f7f0a9f",
+						"type": "leaf",
+						"state": {
+							"type": "tag",
+							"state": {
+								"sortOrder": "frequency",
+								"useHierarchy": true,
+								"showSearch": false,
+								"searchQuery": ""
+							},
+							"icon": "lucide-tags",
+							"title": "Tags"
+						}
+					},
+					{
+						"id": "522f0b85bd26e272",
+						"type": "leaf",
+						"state": {
+							"type": "all-properties",
+							"state": {
+								"sortOrder": "frequency",
+								"showSearch": false,
+								"searchQuery": ""
+							},
+							"icon": "lucide-archive",
+							"title": "All properties"
+						}
+					},
+					{
+						"id": "6f07e0a6874777d3",
+						"type": "leaf",
+						"state": {
+							"type": "outline",
+							"state": {
+								"file": "README.md",
+								"followCursor": false,
+								"showSearch": false,
+								"searchQuery": ""
+							},
+							"icon": "lucide-list",
+							"title": "Outline of README"
+						}
+					}
+				]
+			}
+		],
+		"direction": "horizontal",
+		"width": 300,
+		"collapsed": true
+	},
+	"left-ribbon": {
+		"hiddenItems": {
+			"switcher:Open quick switcher": false,
+			"graph:Open graph view": false,
+			"canvas:Create new canvas": false,
+			"daily-notes:Open today's daily note": false,
+			"templates:Insert template": false,
+			"command-palette:Open command palette": false,
+			"bases:Create new base": false
+		}
+	},
+	"active": "f1f1b3705999c290",
+	"lastOpenFiles": []
+}
