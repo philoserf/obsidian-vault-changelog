@@ -1,0 +1,9 @@
+_extends: .github
+
+repository:
+  name: obsidian-vault-changelog
+  description: "An Obsidian plugin to maintain a changelog of recently edited notes"
+  homepage: https://philoserf.github.io/obsidian-vault-changelog/
+  topics:
+    - changelog
+    - obsidian-plugin
