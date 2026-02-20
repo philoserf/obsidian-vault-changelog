@@ -1,13 +1,16 @@
 name: Release
+
 on:
   push:
-    tags: ["*"]
+    tags:
+      - "*"
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -16,10 +19,9 @@ jobs:
           bun install
           bun run build
 
-      - name: Create Release and Upload Assets
+      - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref }}
           files: |
             main.js
             manifest.json

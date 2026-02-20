@@ -1,18 +1,33 @@
 version: 2
 updates:
-  # npm dependencies
-  - package-ecosystem: "npm"
+  - package-ecosystem: npm
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
+      interval: weekly
+      day: monday
+      time: "03:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - philoserf
+    assignees:
+      - philoserf
     commit-message:
-      prefix: "chore(deps):"
-      prefix-development: "chore(deps-dev):"
-  - package-ecosystem: "github-actions"
+      prefix: "chore"
+      prefix-scope: "deps"
+      include: "scope"
+
+  - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: weekly
+      day: monday
+      time: "03:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - philoserf
+    assignees:
+      - philoserf
+    commit-message:
+      prefix: "chore"
+      prefix-scope: "ci"
+      include: "scope"
