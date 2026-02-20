@@ -1,10 +1,10 @@
 {
-	"id": "obsidian-vault-changelog",
-	"name": "Vault Changelog",
-	"description": "Maintain a changelog of recently edited notes",
-	"author": "Mark Ayers",
-	"authorUrl": "https://philoserf.com",
-	"fundingUrl": "https://buymeacoffee.com/philoserf",
-	"minAppVersion": "1.0.0",
-	"version": "1.2.0"
+  "id": "obsidian-vault-changelog",
+  "name": "Vault Changelog",
+  "description": "Maintain a changelog of recently edited notes",
+  "author": "Mark Ayers",
+  "authorUrl": "https://philoserf.com",
+  "fundingUrl": "https://buymeacoffee.com/philoserf",
+  "minAppVersion": "1.0.0",
+  "version": "1.2.0"
 }
