@@ -1,17 +1,34 @@
 {
-	"scripts": {
-		"build": "bun build.mjs production",
-		"dev": "bun build.mjs",
-		"format": "bun prettier --write --ignore-unknown .",
-		"lint": "bun run eslint"
-	},
-	"devDependencies": {
-		"@typescript-eslint/eslint-plugin": "^8.46.0",
-		"@typescript-eslint/parser": "^8.46.0",
-		"eslint": "^10.0.0",
-		"eslint-config-prettier": "^10.1.8",
-		"obsidian": "^1.10.0",
-		"prettier": "^3.6.2",
-		"typescript": "^5.9.3"
-	}
+  "name": "obsidian-vault-changelog",
+  "version": "1.2.0",
+  "description": "Maintain a changelog of recently edited notes in Obsidian",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run build.ts --watch",
+    "build": "bun run check && bun run build.ts",
+    "check": "biome check .",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "validate": "bun run scripts/validate-plugin.ts",
+    "version": "bun run version-bump.ts",
+    "prepublishOnly": "bun run validate"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "changelog"
+  ],
+  "author": "Mark Ayers",
+  "license": "MIT",
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
+    "@types/bun": "^1.3.6",
+    "@types/node": "25.0.10",
+    "obsidian": "^1.12.2",
+    "typescript": "^5.9.3"
+  }
 }
