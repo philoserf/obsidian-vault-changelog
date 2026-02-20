@@ -1,31 +1,34 @@
-# Build artifacts
-**/*.js
-main.js.map
+# Build output
+*.js.map
 
 # Dependencies
 node_modules/
 
 # Bun
 .bun/
-# bun.lock - We want to track the lock file
+bun.lockb
 
-# Test vault - plugins
-test-vault/.obsidian/plugins/*
-!test-vault/.obsidian/plugins/journals/.hotreload
-!test-vault/.obsidian/plugins/hot-reload/main.js
-!test-vault/.obsidian/plugins/hot-reload/manifest.json
+# Environment
+.env
+.env.local
 
-# Test vault - config files
-test-vault/.obsidian/app.json
-test-vault/.obsidian/appearance.json
-test-vault/.obsidian/core-plugins-migration.json
-test-vault/.obsidian/core-plugins.json
-test-vault/.obsidian/workspace.json
+# OS
+.DS_Store
+Thumbs.db
 
-# Test vault - markdown files
-test-vault/**/*.md
-!test-vault/Change.md
-!test-vault/Changelog.md
-!test-vault/Delete.md
-!test-vault/Home.md
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code
+.claude/settings.local.json
+
+# Obsidian
+.obsidian/
+test-vault/
+
+# Planning & analysis (local reference only)
 .planning/
