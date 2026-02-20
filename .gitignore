@@ -26,9 +26,9 @@ Thumbs.db
 # Claude Code
 .claude/settings.local.json
 
+# Planning
+.planning/
+
 # Obsidian
 .obsidian/
 test-vault/
-
-# Planning & analysis (local reference only)
-.planning/

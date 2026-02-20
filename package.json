@@ -7,15 +7,15 @@
   "scripts": {
     "dev": "bun run build.ts --watch",
     "build": "bun run check && bun run build.ts",
-    "check": "biome check .",
+    "check": "bun run typecheck && biome check .",
     "typecheck": "tsc --noEmit",
-    "lint": "biome lint .",
-    "lint:fix": "biome lint --write .",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "format:check": "biome format .",
+    "test": "bun test",
     "validate": "bun run scripts/validate-plugin.ts",
-    "version": "bun run version-bump.ts",
-    "prepublishOnly": "bun run validate"
+    "version": "bun run version-bump.ts"
   },
   "keywords": [
     "obsidian",
