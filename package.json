@@ -15,7 +15,8 @@
     "format:check": "biome format .",
     "test": "bun test",
     "validate": "bun run scripts/validate-plugin.ts",
-    "version": "bun run version-bump.ts"
+    "version": "bun run version-bump.ts",
+    "deploy": "cp main.js manifest.json styles.css ~/source/philoserf/notes/.obsidian/plugins/obsidian-vault-changelog/"
   },
   "keywords": [
     "obsidian",
@@ -25,10 +26,11 @@
   "author": "Mark Ayers",
   "license": "MIT",
   "devDependencies": {
-    "@biomejs/biome": "^2.4.3",
+    "@biomejs/biome": "^2.4.5",
     "@types/bun": "^1.3.9",
     "@types/node": "25.3.3",
-    "obsidian": "^1.12.2",
+    "moment": "^2.30.1",
+    "obsidian": "^1.12.3",
     "typescript": "^5.9.3"
   }
 }
