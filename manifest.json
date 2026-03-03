@@ -4,8 +4,7 @@
   "version": "1.2.0",
   "minAppVersion": "1.0.0",
   "description": "Maintain a changelog of recently edited notes",
-  "author": "Mark Ayers",
+  "author": "Mark Ayers (originally by Badr Bouslikhin)",
   "authorUrl": "https://github.com/philoserf",
-  "fundingUrl": "https://buymeacoffee.com/philoserf",
   "isDesktopOnly": false
 }
