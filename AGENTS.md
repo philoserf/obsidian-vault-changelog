@@ -50,7 +50,7 @@ Three source files in `src/`:
 
 ## Build System
 
-Configured in `build.mjs` using Bun's native bundler:
+Configured in `build.ts` using Bun's native bundler:
 
 - **Entry point**: `src/main.ts`
 - **Output**: CommonJS (required by Obsidian), `obsidian` marked external
