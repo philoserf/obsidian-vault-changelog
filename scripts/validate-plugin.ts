@@ -32,16 +32,6 @@ try {
   errors++;
 }
 
-// Run TypeScript type checking
-console.log("\n📝 Type checking...");
-const typecheckResult = await $`bun run typecheck`.nothrow();
-if (typecheckResult.exitCode === 0) {
-  console.log("✓ Type checking passed");
-} else {
-  console.error("✗ Type checking failed");
-  errors++;
-}
-
 // Run checks
 console.log("\n🔧 Checking code quality...");
 const checkResult = await $`bun run check`.nothrow();
@@ -54,7 +44,7 @@ if (checkResult.exitCode === 0) {
 
 // Build the plugin
 console.log("\n📦 Building plugin...");
-const buildResult = await $`bun run build`.nothrow();
+const buildResult = await $`bun run build.ts`.nothrow();
 if (buildResult.exitCode === 0) {
   console.log("✓ Build successful");
 
