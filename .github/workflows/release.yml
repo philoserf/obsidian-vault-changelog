@@ -27,8 +27,8 @@ jobs:
         with:
           files: |
             main.js
-            manifest.json
             styles.css
+            manifest.json
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
