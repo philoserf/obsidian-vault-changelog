@@ -5,6 +5,7 @@
   "main": "main.js",
   "type": "module",
   "scripts": {
+    "audit": "bun audit --audit-level=critical",
     "dev": "bun run build.ts --watch",
     "build": "bun run check && bun run build.ts",
     "check": "bun run typecheck && biome check .",
@@ -23,7 +24,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.6",
     "@types/bun": "^1.3.10",
-    "@types/node": "^25.3.5",
+    "@types/node": "^25.4.0",
     "moment": "^2.30.1",
     "obsidian": "^1.12.3",
     "typescript": "^5.9.3"
