@@ -19,3 +19,4 @@ jobs:
       - run: bun install
       - run: bun audit --audit-level=critical
       - run: bun run check
+      - run: bun test
