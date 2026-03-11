@@ -18,8 +18,6 @@ find . -type f \( -name "*.ts" -o -name "*.json" -o -name "*.css" -o -name "*.ym
 ```output
 ./.github/dependabot.yml
 ./.github/settings.yml
-./.github/workflows/claude.yml
-./.github/workflows/jekyll-gh-pages.yml
 ./.github/workflows/main.yml
 ./.github/workflows/release.yml
 ./biome.json
@@ -682,7 +680,8 @@ cat tsconfig.json
     "strict": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "build.ts", "version-bump.ts"]
+  "include": ["src/**/*.ts", "build.ts", "version-bump.ts"],
+  "exclude": ["src/**/*.test.ts"]
 }
 ```
 
@@ -748,13 +747,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
       - run: bun install
+      - run: bun audit --audit-level=critical
       - run: bun run check
+      - run: bun test
 ```
 
 CI runs on every push to `main` and on PRs. It runs `bun run check`, which is `tsc --noEmit && biome check .` — type-checking and linting.
@@ -772,6 +771,9 @@ on:
   push:
     tags:
       - "*"
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -792,8 +794,8 @@ jobs:
         with:
           files: |
             main.js
-            manifest.json
             styles.css
+            manifest.json
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1039,4 +1041,3 @@ The manual command ("Update Changelog") bypasses the event system and calls `upd
 | #101 — Folder matching lacks delimiter | MEDIUM | `startsWith` without `/` is a known pattern bug |
 | #109 — Tests not in CI | HIGH | Community norm is to run tests in CI |
 | #113 — Tests don't test real code | MEDIUM | Test doubles should exercise production paths |
-
