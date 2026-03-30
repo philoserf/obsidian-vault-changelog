@@ -90,6 +90,25 @@ describe("filterAndSort", () => {
     const result = filterAndSort(files, "Changelog.md", [], 25);
     expect(result).toHaveLength(4);
   });
+
+  test("does not exclude folders that share a prefix", () => {
+    const filesWithPrefix = [
+      { path: "Notes/file.md", basename: "file", stat: { mtime: 100 } },
+      { path: "Notes2/file.md", basename: "file2", stat: { mtime: 200 } },
+      { path: "Notebook/file.md", basename: "file3", stat: { mtime: 300 } },
+    ];
+    const result = filterAndSort(
+      filesWithPrefix,
+      "Changelog.md",
+      ["Notes"],
+      25,
+    );
+    expect(result).toHaveLength(2);
+    expect(result.map((f) => f.path)).toEqual([
+      "Notebook/file.md",
+      "Notes2/file.md",
+    ]);
+  });
 });
 
 describe("generateChangelog", () => {
