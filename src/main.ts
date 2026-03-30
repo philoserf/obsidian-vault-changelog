@@ -67,7 +67,9 @@ export default class ChangelogPlugin extends Plugin {
       try {
         file = await this.app.vault.create(path, "");
       } catch {
+        // File may have been created by a concurrent event (TOCTOU race)
         file = this.app.vault.getAbstractFileByPath(path);
+        if (!file) throw new Error(`Failed to create changelog at: ${path}`);
       }
     }
     if (file instanceof TFile) {
