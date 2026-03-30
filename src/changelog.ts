@@ -45,7 +45,8 @@ export function filterAndSort(
     .filter((file) => {
       if (file.path === changelogPath) return false;
       for (const folder of excludedFolders) {
-        if (file.path.startsWith(folder)) return false;
+        const normalized = folder.endsWith("/") ? folder : `${folder}/`;
+        if (file.path.startsWith(normalized)) return false;
       }
       return true;
     })
