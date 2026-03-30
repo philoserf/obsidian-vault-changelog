@@ -1,11 +1,6 @@
-import {
-  type App,
-  Notice,
-  normalizePath,
-  PluginSettingTab,
-  Setting,
-} from "obsidian";
+import { type App, normalizePath, PluginSettingTab, Setting } from "obsidian";
 
+import { DEFAULT_SETTINGS } from "./changelog";
 import type ChangelogPlugin from "./main";
 import { PathSuggest } from "./suggest";
 
@@ -76,24 +71,21 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         new PathSuggest(this.app, text.inputEl);
       });
 
+    const datetimePreview = containerEl.createEl("div", {
+      cls: "setting-item-description",
+      text: `Preview: ${window.moment().format(settings.datetimeFormat)}`,
+    });
+
     new Setting(containerEl)
       .setName("Datetime format")
-      .setDesc("Moment.js datetime format string")
+      .setDesc("Moment.js format string")
       .addText((text) =>
         text
           .setPlaceholder("YYYY-MM-DD[T]HHmm")
           .setValue(settings.datetimeFormat)
           .onChange(async (format) => {
-            const m = window.moment();
-            const isValid = m.format(format) !== "Invalid date";
-
-            if (!isValid) {
-              text.setValue(settings.datetimeFormat);
-              new Notice("Invalid datetime format");
-              return;
-            }
-
-            settings.datetimeFormat = format;
+            datetimePreview.textContent = `Preview: ${window.moment().format(format || settings.datetimeFormat)}`;
+            settings.datetimeFormat = format || DEFAULT_SETTINGS.datetimeFormat;
             await this.plugin.saveSettings();
           }),
       );
@@ -110,7 +102,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
               text.setValue(settings.maxRecentFiles.toString());
               return;
             }
-            settings.maxRecentFiles = numValue;
+            settings.maxRecentFiles = Math.floor(numValue);
             await this.plugin.saveSettings();
           }),
       );
@@ -156,7 +148,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         button.setButtonText("Add").onClick(async () => {
           const input = button.buttonEl.parentElement?.querySelector("input");
           if (input) {
-            const folderPath = input.value;
+            const folderPath = normalizePath(input.value);
             if (folderPath && !settings.excludedFolders.includes(folderPath)) {
               settings.excludedFolders.push(folderPath);
               await this.plugin.saveSettings();
