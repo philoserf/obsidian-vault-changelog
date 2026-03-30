@@ -30,32 +30,13 @@ export default class ChangelogPlugin extends Plugin {
 
     this.onVaultChange = debounce(this.onVaultChange.bind(this), 200);
 
-    this.registerEvent(
-      this.app.vault.on("modify", (file: TAbstractFile) => {
-        if (file instanceof TFile) {
-          this.onVaultChange(file);
-        }
-      }),
-    );
-
-    this.registerEvent(
-      this.app.vault.on("delete", (file: TAbstractFile) => {
-        if (file instanceof TFile) {
-          this.onVaultChange(file);
-        }
-      }),
-    );
-
-    this.registerEvent(
-      this.app.vault.on("rename", (file: TAbstractFile) => {
-        if (file instanceof TFile) {
-          this.onVaultChange(file);
-        }
-      }),
-    );
+    const handler = (file: TAbstractFile) => {
+      if (file instanceof TFile) this.onVaultChange(file);
+    };
+    this.registerEvent(this.app.vault.on("modify", handler));
+    this.registerEvent(this.app.vault.on("delete", handler));
+    this.registerEvent(this.app.vault.on("rename", handler));
   }
-
-  onunload(): void {}
 
   onVaultChange(file: TFile): void {
     if (!this.settings.autoUpdate) return;
@@ -70,7 +51,7 @@ export default class ChangelogPlugin extends Plugin {
       this.settings.changelogPath,
       this.settings.excludedFolders,
       this.settings.maxRecentFiles,
-    ) as TFile[];
+    );
     const changelog = generateChangelog(
       recentFiles,
       this.settings.datetimeFormat,
@@ -105,7 +86,10 @@ export default class ChangelogPlugin extends Plugin {
 
     if (this.settings.excludedFolders.length > 0) {
       this.settings.excludedFolders = this.settings.excludedFolders.map(
-        (folder) => normalizePath(folder),
+        (folder) => {
+          const normalized = normalizePath(folder);
+          return normalized.endsWith("/") ? normalized : `${normalized}/`;
+        },
       );
     }
   }

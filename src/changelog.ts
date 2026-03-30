@@ -32,21 +32,21 @@ export function formatEntry(
   const m = window.moment(file.stat.mtime);
   const formattedTime = m.format(datetimeFormat);
   const fileName = useWikiLinks ? `[[${file.basename}]]` : file.basename;
-  return `- ${formattedTime} \u00b7 ${fileName}`;
+  return `- ${formattedTime} · ${fileName}`;
 }
 
-export function filterAndSort(
-  files: ChangelogFile[],
+export function filterAndSort<T extends ChangelogFile>(
+  files: T[],
   changelogPath: string,
   excludedFolders: string[],
   maxRecentFiles: number,
-): ChangelogFile[] {
+): T[] {
   return files
     .filter((file) => {
       if (file.path === changelogPath) return false;
       for (const folder of excludedFolders) {
-        const normalized = folder.endsWith("/") ? folder : `${folder}/`;
-        if (file.path.startsWith(normalized)) return false;
+        if (file.path.startsWith(folder.endsWith("/") ? folder : `${folder}/`))
+          return false;
       }
       return true;
     })
