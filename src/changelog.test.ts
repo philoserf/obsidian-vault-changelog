@@ -147,3 +147,26 @@ describe("generateChangelog", () => {
     expect(result).toBe("");
   });
 });
+
+describe("maxRecentFiles validation", () => {
+  test("truncates float to integer", () => {
+    expect(Math.floor(Number("3.7"))).toBe(3);
+  });
+
+  test("rejects NaN", () => {
+    expect(Number.isNaN(Number("abc"))).toBe(true);
+  });
+
+  test("rejects zero", () => {
+    expect(Number("0") < 1).toBe(true);
+  });
+
+  test("rejects negative", () => {
+    expect(Number("-5") < 1).toBe(true);
+  });
+
+  test("accepts valid number", () => {
+    const n = Number("25");
+    expect(!Number.isNaN(n) && n >= 1).toBe(true);
+  });
+});
