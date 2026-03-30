@@ -84,8 +84,12 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           .setPlaceholder("YYYY-MM-DD[T]HHmm")
           .setValue(settings.datetimeFormat)
           .onChange(async (format) => {
-            datetimePreview.textContent = `Preview: ${window.moment().format(format || settings.datetimeFormat)}`;
-            settings.datetimeFormat = format || DEFAULT_SETTINGS.datetimeFormat;
+            const nextFormat = format || DEFAULT_SETTINGS.datetimeFormat;
+            if (!format) {
+              text.setValue(nextFormat);
+            }
+            settings.datetimeFormat = nextFormat;
+            datetimePreview.textContent = `Preview: ${window.moment().format(nextFormat)}`;
             await this.plugin.saveSettings();
           }),
       );
@@ -102,7 +106,9 @@ export class ChangelogSettingsTab extends PluginSettingTab {
               text.setValue(settings.maxRecentFiles.toString());
               return;
             }
-            settings.maxRecentFiles = Math.floor(numValue);
+            const flooredValue = Math.floor(numValue);
+            settings.maxRecentFiles = flooredValue;
+            text.setValue(flooredValue.toString());
             await this.plugin.saveSettings();
           }),
       );
