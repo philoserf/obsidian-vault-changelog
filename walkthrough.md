@@ -1,7 +1,7 @@
 # Obsidian Vault Changelog — Code Walkthrough
 
-*2026-03-30T15:35:46Z by Showboat 0.6.1*
-<!-- showboat-id: d1193ab1-f7e4-4aff-bc3c-2e74a6310b52 -->
+*2026-03-30T16:06:24Z by Showboat 0.6.1*
+<!-- showboat-id: 41ae9c6e-7f9a-41f2-b732-2c2a5fa10f64 -->
 
 ## Overview
 
@@ -121,37 +121,38 @@ export function formatEntry(
   const m = window.moment(file.stat.mtime);
   const formattedTime = m.format(datetimeFormat);
   const fileName = useWikiLinks ? `[[${file.basename}]]` : file.basename;
-  return `- ${formattedTime} \u00b7 ${fileName}`;
+  return `- ${formattedTime} · ${fileName}`;
 }
 ```
 
-#### filterAndSort — file selection pipeline
+#### filterAndSort — generic file selection pipeline
 
-Filters out the changelog file itself and any files in excluded folders, sorts by modification time (newest first), and truncates to `maxRecentFiles`. The trailing-slash normalization on line 48 prevents prefix false matches (e.g. excluding "Notes" won't exclude "Notes2").
+Filters out the changelog file itself and any files in excluded folders, sorts by modification time (newest first), and truncates to `maxRecentFiles`. The generic type parameter `<T extends ChangelogFile>` preserves the caller's concrete type (e.g. `TFile`) through the pipeline without requiring a cast. The trailing-slash check on excluded folders prevents prefix false matches (e.g. excluding "Notes" won't exclude "Notes2").
 
 ```bash
-sed -n '38,55p' src/changelog.ts
+sed -n '38,56p' src/changelog.ts
 ```
 
 ```output
-export function filterAndSort(
-  files: ChangelogFile[],
+export function filterAndSort<T extends ChangelogFile>(
+  files: T[],
   changelogPath: string,
   excludedFolders: string[],
   maxRecentFiles: number,
-): ChangelogFile[] {
+): T[] {
   return files
     .filter((file) => {
       if (file.path === changelogPath) return false;
       for (const folder of excludedFolders) {
-        const normalized = folder.endsWith("/") ? folder : `${folder}/`;
-        if (file.path.startsWith(normalized)) return false;
+        if (file.path.startsWith(folder.endsWith("/") ? folder : `${folder}/`))
+          return false;
       }
       return true;
     })
     .sort((a, b) => b.stat.mtime - a.stat.mtime)
     .slice(0, maxRecentFiles);
 }
+
 ```
 
 #### generateChangelog — assembles the full output
@@ -159,11 +160,10 @@ export function filterAndSort(
 Combines an optional heading with formatted entries. Returns the complete changelog string ready to write to disk.
 
 ```bash
-sed -n '57,71p' src/changelog.ts
+sed -n '58,72p' src/changelog.ts
 ```
 
 ```output
-export function generateChangelog(
   files: ChangelogFile[],
   datetimeFormat: string,
   useWikiLinks: boolean,
@@ -185,8 +185,6 @@ export function generateChangelog(
 The plugin class is a thin adapter between Obsidian's API and the pure logic. It handles lifecycle, event wiring, file I/O, and settings persistence.
 
 #### Imports and class declaration
-
-Imports pure logic from `changelog.ts` and the settings tab UI. The plugin class extends Obsidian's `Plugin` base.
 
 ```bash
 sed -n '1,19p' src/main.ts
@@ -216,10 +214,10 @@ export default class ChangelogPlugin extends Plugin {
 
 #### onload — lifecycle entry point
 
-Loads settings, registers the settings tab and command, then wires up vault events. Events are registered unconditionally — the `autoUpdate` check happens at runtime in `onVaultChange`, preventing listener leaks when the toggle is flipped.
+Loads settings, registers the settings tab and command, then wires up vault events. A shared `handler` function is reused across all three event types. Events are registered unconditionally — the `autoUpdate` check happens at runtime in `onVaultChange`, preventing listener leaks when the toggle is flipped. The command callback is `async` to properly await `updateChangelog`.
 
 ```bash
-sed -n '21,56p' src/main.ts
+sed -n '21,40p' src/main.ts
 ```
 
 ```output
@@ -230,50 +228,36 @@ sed -n '21,56p' src/main.ts
     this.addCommand({
       id: "update-changelog",
       name: "Update Changelog",
-      callback: () => this.updateChangelog(),
+      callback: async () => this.updateChangelog(),
     });
 
     this.onVaultChange = debounce(this.onVaultChange.bind(this), 200);
 
-    this.registerEvent(
-      this.app.vault.on("modify", (file: TAbstractFile) => {
-        if (file instanceof TFile) {
-          this.onVaultChange(file);
-        }
-      }),
-    );
-
-    this.registerEvent(
-      this.app.vault.on("delete", (file: TAbstractFile) => {
-        if (file instanceof TFile) {
-          this.onVaultChange(file);
-        }
-      }),
-    );
-
-    this.registerEvent(
-      this.app.vault.on("rename", (file: TAbstractFile) => {
-        if (file instanceof TFile) {
-          this.onVaultChange(file);
-        }
-      }),
-    );
+    const handler = (file: TAbstractFile) => {
+      if (file instanceof TFile) this.onVaultChange(file);
+    };
+    this.registerEvent(this.app.vault.on("modify", handler));
+    this.registerEvent(this.app.vault.on("delete", handler));
+    this.registerEvent(this.app.vault.on("rename", handler));
   }
+
 ```
 
 #### Event handling and changelog generation
 
-`onVaultChange` is the debounced event handler — it gates on `autoUpdate` and skips changes to the changelog file itself to avoid infinite loops. `updateChangelog` delegates to the pure functions and writes the result.
+`onVaultChange` is the debounced event handler — it gates on `autoUpdate` and skips changes to the changelog file itself to avoid infinite loops. Errors from `updateChangelog` are caught and surfaced via `console.error` and a `Notice`. `updateChangelog` delegates to the pure functions and writes the result.
 
 ```bash
-sed -n '60,81p' src/main.ts
+sed -n '42,65p' src/main.ts
 ```
 
 ```output
-  onVaultChange(file: TFile): void {
     if (!this.settings.autoUpdate) return;
     if (file.path !== this.settings.changelogPath) {
-      this.updateChangelog();
+      void this.updateChangelog().catch((err) => {
+        console.error("Changelog update failed:", err);
+        new Notice("Failed to update changelog");
+      });
     }
   }
 
@@ -283,7 +267,7 @@ sed -n '60,81p' src/main.ts
       this.settings.changelogPath,
       this.settings.excludedFolders,
       this.settings.maxRecentFiles,
-    ) as TFile[];
+    );
     const changelog = generateChangelog(
       recentFiles,
       this.settings.datetimeFormat,
@@ -296,10 +280,10 @@ sed -n '60,81p' src/main.ts
 
 #### writeToFile — TOCTOU-safe file creation
 
-Creates the changelog file if it doesn't exist, then writes content. The try/catch around `vault.create` handles a race condition where another event creates the file between the existence check and the create call.
+Creates the changelog file if it doesn't exist, then writes content. The try/catch around `vault.create` handles a race condition where another event creates the file between the existence check and the create call. If the file still doesn't exist after the catch, the error is rethrown rather than swallowed.
 
 ```bash
-sed -n '83,97p' src/main.ts
+sed -n '67,83p' src/main.ts
 ```
 
 ```output
@@ -309,7 +293,9 @@ sed -n '83,97p' src/main.ts
       try {
         file = await this.app.vault.create(path, "");
       } catch {
+        // File may have been created by a concurrent event (TOCTOU race)
         file = this.app.vault.getAbstractFileByPath(path);
+        if (!file) throw new Error(`Failed to create changelog at: ${path}`);
       }
     }
     if (file instanceof TFile) {
@@ -322,10 +308,10 @@ sed -n '83,97p' src/main.ts
 
 #### loadSettings — with self-healing migration
 
-Merges saved settings over defaults (so new fields get default values). Then normalizes any previously saved excluded folder paths that may not have been normalized when originally saved.
+Merges saved settings over defaults (so new fields get default values). Then normalizes any previously saved excluded folder paths and ensures they have a trailing slash for correct prefix matching in `filterAndSort`.
 
 ```bash
-sed -n '99,111p' src/main.ts
+sed -n '85,101p' src/main.ts
 ```
 
 ```output
@@ -338,10 +324,14 @@ sed -n '99,111p' src/main.ts
 
     if (this.settings.excludedFolders.length > 0) {
       this.settings.excludedFolders = this.settings.excludedFolders.map(
-        (folder) => normalizePath(folder),
+        (folder) => {
+          const normalized = normalizePath(folder);
+          return normalized.endsWith("/") ? normalized : `${normalized}/`;
+        },
       );
     }
   }
+
 ```
 
 ### 3. Settings UI — `src/settings.ts`
@@ -349,12 +339,13 @@ sed -n '99,111p' src/main.ts
 The settings tab renders Obsidian's `Setting` components. Key design choices:
 
 - **Live datetime preview** replaces validation — users see exactly what their format produces
-- **`Math.floor`** on maxRecentFiles prevents float values
-- **`normalizePath`** on excluded folder input sanitizes paths on save
+- **`nextFormat` pattern** — computes the effective format once, resets the input when cleared, and keeps preview/saved value in sync
+- **`Math.floor`** on maxRecentFiles prevents float values, and the text input is updated to show the floored integer
+- **`normalizePath` + trailing slash** on excluded folder input sanitizes paths on save
 - **Auto-update toggle** simply persists the boolean — no event re-registration needed
 
 ```bash
-sed -n '74,91p' src/settings.ts
+sed -n '74,95p' src/settings.ts
 ```
 
 ```output
@@ -371,8 +362,12 @@ sed -n '74,91p' src/settings.ts
           .setPlaceholder("YYYY-MM-DD[T]HHmm")
           .setValue(settings.datetimeFormat)
           .onChange(async (format) => {
-            datetimePreview.textContent = `Preview: ${window.moment().format(format || settings.datetimeFormat)}`;
-            settings.datetimeFormat = format || DEFAULT_SETTINGS.datetimeFormat;
+            const nextFormat = format || DEFAULT_SETTINGS.datetimeFormat;
+            if (!format) {
+              text.setValue(nextFormat);
+            }
+            settings.datetimeFormat = nextFormat;
+            datetimePreview.textContent = `Preview: ${window.moment().format(nextFormat)}`;
             await this.plugin.saveSettings();
           }),
       );
@@ -459,9 +454,7 @@ Coverage spans all exported pure functions: `DEFAULT_SETTINGS`, `formatEntry`, `
 
 1. **`window.moment` coupling** — `formatEntry` uses `window.moment`, a global provided by Obsidian at runtime. This works but is an implicit dependency. A future improvement could accept a formatter function parameter, making the dependency explicit and the function fully portable.
 
-2. **No upper bound on `maxRecentFiles`** — The settings UI rejects values below 1 and truncates floats, but doesn't cap the maximum. A user could set 999999, causing `filterAndSort` to process the entire vault. Low risk in practice (vaults rarely exceed thousands of files) but worth noting.
+2. **No upper bound on `maxRecentFiles`** — The settings UI rejects values below 1 and truncates floats, but doesn't cap the maximum. A user could set 999999, causing `filterAndSort` to process the entire vault. Low risk in practice but worth noting.
 
 3. **Excluded folder remove button uses `addEventListener`** — In `settings.ts:32`, the remove button's click handler uses raw `addEventListener` instead of Obsidian's event registration. Since the settings tab is re-rendered on each display, the elements are replaced, so this doesn't leak — but it's inconsistent with the rest of the plugin's event handling pattern.
-
-4. **`as TFile[]` type assertion** — In `main.ts:73`, `filterAndSort` returns `ChangelogFile[]` which is cast to `TFile[]`. This is safe because the input is `TFile[]` from `getMarkdownFiles()`, but the assertion bypasses type checking. A generic type parameter on `filterAndSort` would be cleaner.
 
