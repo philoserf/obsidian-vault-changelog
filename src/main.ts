@@ -21,57 +21,37 @@ export default class ChangelogPlugin extends Plugin {
       callback: () => this.updateChangelog(),
     });
 
-    this.loadStyles();
-
     this.onVaultChange = debounce(this.onVaultChange.bind(this), 200);
-    this.enableAutoUpdate();
+
+    this.registerEvent(
+      this.app.vault.on("modify", (file: TAbstractFile) => {
+        if (file instanceof TFile) {
+          this.onVaultChange(file);
+        }
+      }),
+    );
+
+    this.registerEvent(
+      this.app.vault.on("delete", (file: TAbstractFile) => {
+        if (file instanceof TFile) {
+          this.onVaultChange(file);
+        }
+      }),
+    );
+
+    this.registerEvent(
+      this.app.vault.on("rename", (file: TAbstractFile) => {
+        if (file instanceof TFile) {
+          this.onVaultChange(file);
+        }
+      }),
+    );
   }
 
   onunload(): void {}
 
-  async loadStyles(): Promise<void> {
-    const cssFile = await this.app.vault.adapter.read(
-      `${this.manifest.dir}/styles.css`,
-    );
-    this.registerStyles(cssFile);
-  }
-
-  registerStyles(cssText: string): void {
-    const styleEl = document.createElement("style");
-    styleEl.textContent = cssText;
-    this.register(() => styleEl.remove());
-    document.head.appendChild(styleEl);
-  }
-
-  enableAutoUpdate(): void {
-    if (this.settings.autoUpdate) {
-      this.registerEvent(
-        this.app.vault.on("modify", (file: TAbstractFile) => {
-          if (file instanceof TFile) {
-            this.onVaultChange(file);
-          }
-        }),
-      );
-
-      this.registerEvent(
-        this.app.vault.on("delete", (file: TAbstractFile) => {
-          if (file instanceof TFile) {
-            this.onVaultChange(file);
-          }
-        }),
-      );
-
-      this.registerEvent(
-        this.app.vault.on("rename", (file: TAbstractFile) => {
-          if (file instanceof TFile) {
-            this.onVaultChange(file);
-          }
-        }),
-      );
-    }
-  }
-
   onVaultChange(file: TFile): void {
+    if (!this.settings.autoUpdate) return;
     if (file.path !== this.settings.changelogPath) {
       this.updateChangelog();
     }

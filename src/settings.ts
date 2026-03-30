@@ -58,9 +58,6 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         toggle.setValue(settings.autoUpdate).onChange(async (value) => {
           settings.autoUpdate = value;
           await this.plugin.saveSettings();
-          if (value) {
-            this.plugin.enableAutoUpdate();
-          }
         }),
       );
 
