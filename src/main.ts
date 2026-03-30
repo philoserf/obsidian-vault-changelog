@@ -25,7 +25,7 @@ export default class ChangelogPlugin extends Plugin {
     this.addCommand({
       id: "update-changelog",
       name: "Update Changelog",
-      callback: () => this.updateChangelog(),
+      callback: async () => this.updateChangelog(),
     });
 
     this.onVaultChange = debounce(this.onVaultChange.bind(this), 200);
@@ -41,7 +41,10 @@ export default class ChangelogPlugin extends Plugin {
   onVaultChange(file: TFile): void {
     if (!this.settings.autoUpdate) return;
     if (file.path !== this.settings.changelogPath) {
-      this.updateChangelog();
+      void this.updateChangelog().catch((err) => {
+        console.error("Changelog update failed:", err);
+        new Notice("Failed to update changelog");
+      });
     }
   }
 
