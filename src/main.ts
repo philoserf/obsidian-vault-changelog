@@ -83,7 +83,11 @@ export default class ChangelogPlugin extends Plugin {
   async writeToFile(path: string, content: string): Promise<void> {
     let file = this.app.vault.getAbstractFileByPath(path);
     if (!file) {
-      file = await this.app.vault.create(path, "");
+      try {
+        file = await this.app.vault.create(path, "");
+      } catch {
+        file = this.app.vault.getAbstractFileByPath(path);
+      }
     }
     if (file instanceof TFile) {
       await this.app.vault.modify(file, content);
