@@ -148,7 +148,10 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         button.setButtonText("Add").onClick(async () => {
           const input = button.buttonEl.parentElement?.querySelector("input");
           if (input) {
-            const folderPath = normalizePath(input.value);
+            const normalized = normalizePath(input.value);
+            const folderPath = normalized.endsWith("/")
+              ? normalized
+              : `${normalized}/`;
             if (folderPath && !settings.excludedFolders.includes(folderPath)) {
               settings.excludedFolders.push(folderPath);
               await this.plugin.saveSettings();
