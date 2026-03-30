@@ -9,26 +9,6 @@ import {
 import type ChangelogPlugin from "./main";
 import { PathSuggest } from "./suggest";
 
-export interface ChangelogSettings {
-  autoUpdate: boolean;
-  changelogPath: string;
-  datetimeFormat: string;
-  maxRecentFiles: number;
-  excludedFolders: string[];
-  useWikiLinks: boolean;
-  changelogHeading: string;
-}
-
-export const DEFAULT_SETTINGS: ChangelogSettings = {
-  autoUpdate: false,
-  changelogPath: "Changelog.md",
-  datetimeFormat: "YYYY-MM-DD[T]HHmm",
-  maxRecentFiles: 25,
-  excludedFolders: [],
-  useWikiLinks: true,
-  changelogHeading: "",
-};
-
 export class ChangelogSettingsTab extends PluginSettingTab {
   plugin: ChangelogPlugin;
 

@@ -2,9 +2,11 @@ import { debounce, Notice, Plugin, type TAbstractFile, TFile } from "obsidian";
 
 import {
   type ChangelogSettings,
-  ChangelogSettingsTab,
   DEFAULT_SETTINGS,
-} from "./settings";
+  filterAndSort,
+  generateChangelog,
+} from "./changelog";
+import { ChangelogSettingsTab } from "./settings";
 
 export default class ChangelogPlugin extends Plugin {
   settings: ChangelogSettings = DEFAULT_SETTINGS;
@@ -76,51 +78,19 @@ export default class ChangelogPlugin extends Plugin {
   }
 
   async updateChangelog(): Promise<void> {
-    const changelog = await this.generateChangelog();
+    const recentFiles = filterAndSort(
+      this.app.vault.getMarkdownFiles(),
+      this.settings.changelogPath,
+      this.settings.excludedFolders,
+      this.settings.maxRecentFiles,
+    ) as TFile[];
+    const changelog = generateChangelog(
+      recentFiles,
+      this.settings.datetimeFormat,
+      this.settings.useWikiLinks,
+      this.settings.changelogHeading,
+    );
     await this.writeToFile(this.settings.changelogPath, changelog);
-  }
-
-  async generateChangelog(): Promise<string> {
-    const recentFiles = this.getRecentlyEditedFiles();
-
-    let changelogContent = "";
-
-    if (this.settings.changelogHeading) {
-      changelogContent += `${this.settings.changelogHeading}\n\n`;
-    }
-
-    recentFiles.forEach((file) => {
-      const m = window.moment(file.stat.mtime);
-      const formattedTime = m.format(this.settings.datetimeFormat);
-
-      const fileName = this.settings.useWikiLinks
-        ? `[[${file.basename}]]`
-        : file.basename;
-
-      changelogContent += `- ${formattedTime} · ${fileName}\n`;
-    });
-
-    return changelogContent;
-  }
-
-  getRecentlyEditedFiles(): TFile[] {
-    return this.app.vault
-      .getMarkdownFiles()
-      .filter((file) => {
-        if (file.path === this.settings.changelogPath) {
-          return false;
-        }
-
-        for (const folder of this.settings.excludedFolders) {
-          if (file.path.startsWith(folder)) {
-            return false;
-          }
-        }
-
-        return true;
-      })
-      .sort((a, b) => b.stat.mtime - a.stat.mtime)
-      .slice(0, this.settings.maxRecentFiles);
   }
 
   async writeToFile(path: string, content: string): Promise<void> {
