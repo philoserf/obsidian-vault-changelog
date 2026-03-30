@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.0
+
+### Refactors
+
+- Extract pure changelog logic into `src/changelog.ts` with no Obsidian imports
+- Plugin class is now a thin shell; tests import real code instead of duplicating it
+
+### Fixes
+
+- Eliminate event listener leak when toggling auto-update (#97)
+- Remove manual style loading that duplicated Obsidian built-in (#99)
+- Replace no-op datetime format validation with live preview (#98)
+- Normalize excluded folder paths on save and load (#100)
+- Enforce trailing slash in excluded folder matching to prevent prefix false matches (#101)
+- Truncate float values for maxRecentFiles setting (#128)
+- Handle TOCTOU race condition in writeToFile (#110)
+- Add bun-types and node to tsconfig types field
+
+### Chores
+
+- Update @biomejs/biome to 2.4.9
+
 ## 1.2.0
 
 ### Features
