@@ -24,17 +24,6 @@ interface ChangelogFile {
   stat: { mtime: number };
 }
 
-export function formatEntry(
-  file: ChangelogFile,
-  datetimeFormat: string,
-  useWikiLinks: boolean,
-): string {
-  const m = window.moment(file.stat.mtime);
-  const formattedTime = m.format(datetimeFormat);
-  const fileName = useWikiLinks ? `[[${file.basename}]]` : file.basename;
-  return `- ${formattedTime} · ${fileName}`;
-}
-
 export function filterAndSort<T extends ChangelogFile>(
   files: T[],
   changelogPath: string,
@@ -60,12 +49,11 @@ export function generateChangelog(
   useWikiLinks: boolean,
   changelogHeading: string,
 ): string {
-  let content = "";
-  if (changelogHeading) {
-    content += `${changelogHeading}\n\n`;
-  }
+  let content = changelogHeading ? `${changelogHeading}\n\n` : "";
   for (const file of files) {
-    content += `${formatEntry(file, datetimeFormat, useWikiLinks)}\n`;
+    const time = window.moment(file.stat.mtime).format(datetimeFormat);
+    const name = useWikiLinks ? `[[${file.basename}]]` : file.basename;
+    content += `- ${time} · ${name}\n`;
   }
   return content;
 }
