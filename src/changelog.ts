@@ -24,12 +24,12 @@ interface ChangelogFile {
   stat: { mtime: number };
 }
 
-export function filterAndSort<T extends ChangelogFile>(
-  files: T[],
+export function filterAndSort(
+  files: ChangelogFile[],
   changelogPath: string,
   excludedFolders: string[],
   maxRecentFiles: number,
-): T[] {
+): ChangelogFile[] {
   return files
     .filter((file) => {
       if (file.path === changelogPath) return false;
