@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "*"
+      - "[0-9]+.[0-9]+.[0-9]+"
 
 permissions:
   contents: write
@@ -20,6 +20,7 @@ jobs:
 
       - run: |
           bun install
+          bun test
           bun run build
 
       - name: Create release
