@@ -96,10 +96,10 @@ export default class ChangelogPlugin extends Plugin {
     this.settings.changelogPath = normalizePath(this.settings.changelogPath);
     this.settings.excludedFolders =
       this.settings.excludedFolders.map(normalizePath);
-    this.settings.maxRecentFiles = Math.max(
-      1,
-      Math.min(Math.floor(this.settings.maxRecentFiles), MAX_RECENT_FILES),
-    );
+    const raw = Number(this.settings.maxRecentFiles);
+    this.settings.maxRecentFiles = Number.isFinite(raw)
+      ? Math.max(1, Math.min(Math.floor(raw), MAX_RECENT_FILES))
+      : DEFAULT_SETTINGS.maxRecentFiles;
   }
 
   async saveSettings(): Promise<void> {
