@@ -15,7 +15,6 @@
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "validate": "bun run scripts/validate-plugin.ts",
     "version": "bun run version-bump.ts",
     "test": "bun test",
     "deploy": "cp main.js manifest.json styles.css ~/source/philoserf/notes/.obsidian/plugins/obsidian-vault-changelog/"

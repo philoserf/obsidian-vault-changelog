@@ -15,7 +15,6 @@ bun run typecheck        # TypeScript type checking only
 bun run lint             # Biome lint + format check
 bun run lint:fix         # Auto-fix lint and format issues
 bun run format           # Format code with Biome
-bun run validate         # Full validation (types, checks, build, output)
 bun run version          # Sync package.json version to manifest.json + versions.json
 bun test                 # Run tests
 ```
