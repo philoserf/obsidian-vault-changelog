@@ -1,6 +1,7 @@
 import {
   AbstractInputSuggest,
   type App,
+  Notice,
   normalizePath,
   PluginSettingTab,
   Setting,
@@ -119,6 +120,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           const normalized = normalizePath(text.getValue());
           if (!normalized.endsWith(".md")) {
             text.setValue(settings.changelogPath);
+            new Notice("Changelog path must end with .md");
             return;
           }
           settings.changelogPath = normalized;
