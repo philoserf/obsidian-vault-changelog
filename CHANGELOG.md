@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.4.0
+
+### Refactors
+
+- Inline `formatEntry` into `generateChangelog` (single call site)
+- Inline `PathSuggest` into `settings.ts`, delete `suggest.ts`
+- Drop unnecessary generic on `filterAndSort`
+- Inject `TimeFormatter` into `generateChangelog`, removing implicit `window.moment` dependency (#131)
+- Move changelog-path and auto-update guards before debounce (#133)
+- Delete `scripts/validate-plugin.ts` (duplicated build pipeline)
+- Delete dead test blocks (DEFAULT_SETTINGS snapshot, maxRecentFiles JS-builtin tests)
+
+### Fixes
+
+- Reject empty and root-level excluded folder paths (#141)
+- Reject non-markdown changelog paths with Notice feedback (#142)
+- Cap `maxRecentFiles` at 500 with `Number.isFinite` guard for corrupt data (#132)
+- Normalize `changelogPath` and `excludedFolders` on settings load
+- Dispatch blur from `PathSuggest.selectSuggestion` so autocomplete saves immediately
+
+### CI/CD
+
+- Run tests in release workflow before building (#140)
+- Restrict release tag pattern to semver (#139)
+- Add bundler step to CI pipeline (#138)
+- Implement file watcher for `bun run dev` (#134)
+- Simplify biome.json file discovery (#137)
+
 ## 1.3.0
 
 ### Refactors
