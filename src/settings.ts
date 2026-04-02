@@ -206,7 +206,11 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           const input = button.buttonEl.parentElement?.querySelector("input");
           if (input) {
             const folder = normalizePath(input.value);
-            if (folder && !settings.excludedFolders.includes(folder)) {
+            if (
+              folder &&
+              folder !== "." &&
+              !settings.excludedFolders.includes(folder)
+            ) {
               settings.excludedFolders.push(folder);
               await this.plugin.saveSettings();
               input.value = "";
