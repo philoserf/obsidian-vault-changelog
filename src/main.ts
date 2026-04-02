@@ -1,11 +1,4 @@
-import {
-  debounce,
-  Notice,
-  normalizePath,
-  Plugin,
-  type TAbstractFile,
-  TFile,
-} from "obsidian";
+import { debounce, Notice, Plugin, type TAbstractFile, TFile } from "obsidian";
 
 import {
   type ChangelogSettings,
@@ -88,15 +81,6 @@ export default class ChangelogPlugin extends Plugin {
       ...DEFAULT_SETTINGS,
       ...loadedSettings,
     };
-
-    if (this.settings.excludedFolders.length > 0) {
-      this.settings.excludedFolders = this.settings.excludedFolders.map(
-        (folder) => {
-          const normalized = normalizePath(folder);
-          return normalized.endsWith("/") ? normalized : `${normalized}/`;
-        },
-      );
-    }
   }
 
   async saveSettings(): Promise<void> {
