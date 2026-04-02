@@ -18,3 +18,4 @@ jobs:
       - run: bun audit --audit-level=critical
       - run: bun run check
       - run: bun test
+      - run: bun run build.ts
