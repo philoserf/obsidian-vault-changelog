@@ -31,21 +31,20 @@ export default class ChangelogPlugin extends Plugin {
     this.onVaultChange = debounce(this.onVaultChange.bind(this), 200);
 
     const handler = (file: TAbstractFile) => {
-      if (file instanceof TFile) this.onVaultChange(file);
+      if (file instanceof TFile && file.path !== this.settings.changelogPath)
+        this.onVaultChange(file);
     };
     this.registerEvent(this.app.vault.on("modify", handler));
     this.registerEvent(this.app.vault.on("delete", handler));
     this.registerEvent(this.app.vault.on("rename", handler));
   }
 
-  onVaultChange(file: TFile): void {
+  onVaultChange(_file: TFile): void {
     if (!this.settings.autoUpdate) return;
-    if (file.path !== this.settings.changelogPath) {
-      void this.updateChangelog().catch((err) => {
-        console.error("Changelog update failed:", err);
-        new Notice("Failed to update changelog");
-      });
-    }
+    void this.updateChangelog().catch((err) => {
+      console.error("Changelog update failed:", err);
+      new Notice("Failed to update changelog");
+    });
   }
 
   async updateChangelog(): Promise<void> {
