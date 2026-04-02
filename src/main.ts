@@ -1,4 +1,11 @@
-import { debounce, Notice, Plugin, type TAbstractFile, TFile } from "obsidian";
+import {
+  debounce,
+  Notice,
+  normalizePath,
+  Plugin,
+  type TAbstractFile,
+  TFile,
+} from "obsidian";
 
 import {
   type ChangelogSettings,
@@ -81,6 +88,11 @@ export default class ChangelogPlugin extends Plugin {
       ...DEFAULT_SETTINGS,
       ...loadedSettings,
     };
+
+    // Normalize persisted folder paths so duplicate detection in the
+    // settings UI (which also runs normalizePath) stays consistent.
+    this.settings.excludedFolders =
+      this.settings.excludedFolders.map(normalizePath);
   }
 
   async saveSettings(): Promise<void> {
