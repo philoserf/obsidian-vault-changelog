@@ -28,3 +28,6 @@ Thumbs.db
 
 # Planning
 .planning/
+
+# Worktrees
+.worktrees/
