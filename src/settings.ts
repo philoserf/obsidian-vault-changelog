@@ -52,6 +52,7 @@ class PathSuggest extends AbstractInputSuggest<string> {
   selectSuggestion(path: string): void {
     this.inputEl.value = path;
     this.inputEl.trigger("input");
+    this.inputEl.dispatchEvent(new Event("blur"));
     this.close();
   }
 }
@@ -163,13 +164,13 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           .setValue(settings.maxRecentFiles.toString())
           .onChange(async (value) => {
             const numValue = Number(value);
-            if (Number.isNaN(numValue)) {
+            if (Number.isNaN(numValue) || numValue < 1) {
               text.setValue(settings.maxRecentFiles.toString());
               return;
             }
-            const flooredValue = Math.max(
-              1,
-              Math.min(Math.floor(numValue), MAX_RECENT_FILES),
+            const flooredValue = Math.min(
+              Math.floor(numValue),
+              MAX_RECENT_FILES,
             );
             settings.maxRecentFiles = flooredValue;
             text.setValue(flooredValue.toString());

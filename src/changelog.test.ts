@@ -42,8 +42,8 @@ describe("filterAndSort", () => {
     expect(result).toHaveLength(2);
   });
 
-  test("respects maxRecentFiles above file count", () => {
-    const result = filterAndSort(files, "Changelog.md", [], 999);
+  test("returns all files when maxRecentFiles exceeds file count", () => {
+    const result = filterAndSort(files, "Changelog.md", [], 25);
     expect(result).toHaveLength(4);
   });
 

@@ -32,7 +32,11 @@ export default class ChangelogPlugin extends Plugin {
     this.onVaultChange = debounce(this.onVaultChange.bind(this), 200);
 
     const handler = (file: TAbstractFile) => {
-      if (file instanceof TFile && file.path !== this.settings.changelogPath) {
+      if (
+        this.settings.autoUpdate &&
+        file instanceof TFile &&
+        file.path !== this.settings.changelogPath
+      ) {
         this.onVaultChange();
       }
     };
@@ -42,7 +46,6 @@ export default class ChangelogPlugin extends Plugin {
   }
 
   onVaultChange(): void {
-    if (!this.settings.autoUpdate) return;
     void this.updateChangelog().catch((err) => {
       console.error("Changelog update failed:", err);
       new Notice("Failed to update changelog");
