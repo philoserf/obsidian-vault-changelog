@@ -18,6 +18,8 @@ export const DEFAULT_SETTINGS: ChangelogSettings = {
   changelogHeading: "",
 };
 
+export const MAX_RECENT_FILES = 500;
+
 interface ChangelogFile {
   path: string;
   basename: string;

@@ -12,6 +12,7 @@ import {
   DEFAULT_SETTINGS,
   filterAndSort,
   generateChangelog,
+  MAX_RECENT_FILES,
 } from "./changelog";
 import { ChangelogSettingsTab } from "./settings";
 
@@ -92,6 +93,10 @@ export default class ChangelogPlugin extends Plugin {
     // settings UI (which also runs normalizePath) stays consistent.
     this.settings.excludedFolders =
       this.settings.excludedFolders.map(normalizePath);
+    this.settings.maxRecentFiles = Math.min(
+      this.settings.maxRecentFiles,
+      MAX_RECENT_FILES,
+    );
   }
 
   async saveSettings(): Promise<void> {

@@ -6,7 +6,7 @@ import {
   Setting,
 } from "obsidian";
 
-import { DEFAULT_SETTINGS } from "./changelog";
+import { DEFAULT_SETTINGS, MAX_RECENT_FILES } from "./changelog";
 import type ChangelogPlugin from "./main";
 
 class PathSuggest extends AbstractInputSuggest<string> {
@@ -149,7 +149,9 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Max recent files")
-      .setDesc("Maximum number of recently edited files to include")
+      .setDesc(
+        `Maximum number of recently edited files to include (1\u2013${MAX_RECENT_FILES})`,
+      )
       .addText((text) =>
         text
           .setValue(settings.maxRecentFiles.toString())
@@ -159,7 +161,10 @@ export class ChangelogSettingsTab extends PluginSettingTab {
               text.setValue(settings.maxRecentFiles.toString());
               return;
             }
-            const flooredValue = Math.floor(numValue);
+            const flooredValue = Math.min(
+              Math.floor(numValue),
+              MAX_RECENT_FILES,
+            );
             settings.maxRecentFiles = flooredValue;
             text.setValue(flooredValue.toString());
             await this.plugin.saveSettings();
