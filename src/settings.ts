@@ -115,7 +115,9 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           .setPlaceholder("Folder/Changelog.md")
           .setValue(settings.changelogPath)
           .onChange(async (path) => {
-            settings.changelogPath = normalizePath(path);
+            const normalized = normalizePath(path);
+            if (!normalized.endsWith(".md")) return;
+            settings.changelogPath = normalized;
             await this.plugin.saveSettings();
           });
 
