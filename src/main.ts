@@ -60,6 +60,7 @@ export default class ChangelogPlugin extends Plugin {
       this.settings.datetimeFormat,
       this.settings.useWikiLinks,
       this.settings.changelogHeading,
+      (mtime, fmt) => window.moment(mtime).format(fmt),
     );
     await this.writeToFile(this.settings.changelogPath, changelog);
   }

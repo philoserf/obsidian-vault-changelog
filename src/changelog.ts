@@ -45,15 +45,18 @@ export function filterAndSort(
     .slice(0, maxRecentFiles);
 }
 
+export type TimeFormatter = (mtime: number, format: string) => string;
+
 export function generateChangelog(
   files: ChangelogFile[],
   datetimeFormat: string,
   useWikiLinks: boolean,
   changelogHeading: string,
+  formatTime: TimeFormatter,
 ): string {
   let content = changelogHeading ? `${changelogHeading}\n\n` : "";
   for (const file of files) {
-    const time = window.moment(file.stat.mtime).format(datetimeFormat);
+    const time = formatTime(file.stat.mtime, datetimeFormat);
     const name = useWikiLinks ? `[[${file.basename}]]` : file.basename;
     content += `- ${time} · ${name}\n`;
   }
