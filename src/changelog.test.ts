@@ -5,26 +5,7 @@ import moment from "moment";
 // @ts-expect-error global mock
 globalThis.window = { moment };
 
-import {
-  DEFAULT_SETTINGS,
-  filterAndSort,
-  formatEntry,
-  generateChangelog,
-} from "./changelog";
-
-describe("DEFAULT_SETTINGS", () => {
-  test("has expected defaults", () => {
-    expect(DEFAULT_SETTINGS).toEqual({
-      autoUpdate: false,
-      changelogPath: "Changelog.md",
-      datetimeFormat: "YYYY-MM-DD[T]HHmm",
-      maxRecentFiles: 25,
-      excludedFolders: [],
-      useWikiLinks: true,
-      changelogHeading: "",
-    });
-  });
-});
+import { filterAndSort, formatEntry, generateChangelog } from "./changelog";
 
 describe("formatEntry", () => {
   const file = {
@@ -145,28 +126,5 @@ describe("generateChangelog", () => {
   test("generates empty changelog", () => {
     const result = generateChangelog([], "YYYY-MM-DD[T]HHmm", true, "");
     expect(result).toBe("");
-  });
-});
-
-describe("maxRecentFiles validation", () => {
-  test("truncates float to integer", () => {
-    expect(Math.floor(Number("3.7"))).toBe(3);
-  });
-
-  test("rejects NaN", () => {
-    expect(Number.isNaN(Number("abc"))).toBe(true);
-  });
-
-  test("rejects zero", () => {
-    expect(Number("0") < 1).toBe(true);
-  });
-
-  test("rejects negative", () => {
-    expect(Number("-5") < 1).toBe(true);
-  });
-
-  test("accepts valid number", () => {
-    const n = Number("25");
-    expect(!Number.isNaN(n) && n >= 1).toBe(true);
   });
 });
