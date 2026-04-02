@@ -32,8 +32,9 @@ export default class ChangelogPlugin extends Plugin {
     this.onVaultChange = debounce(this.onVaultChange.bind(this), 200);
 
     const handler = (file: TAbstractFile) => {
-      if (file instanceof TFile && file.path !== this.settings.changelogPath)
+      if (file instanceof TFile && file.path !== this.settings.changelogPath) {
         this.onVaultChange();
+      }
     };
     this.registerEvent(this.app.vault.on("modify", handler));
     this.registerEvent(this.app.vault.on("delete", handler));

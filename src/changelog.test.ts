@@ -42,6 +42,11 @@ describe("filterAndSort", () => {
     expect(result).toHaveLength(2);
   });
 
+  test("respects maxRecentFiles above file count", () => {
+    const result = filterAndSort(files, "Changelog.md", [], 999);
+    expect(result).toHaveLength(4);
+  });
+
   test("handles empty excluded folders", () => {
     const result = filterAndSort(files, "Changelog.md", [], 25);
     expect(result).toHaveLength(4);
@@ -91,6 +96,19 @@ describe("generateChangelog", () => {
     );
     expect(result).toBe(
       "- 2026-01-15T1430 \u00b7 [[Note B]]\n- 2026-01-15T1400 \u00b7 [[Note A]]\n",
+    );
+  });
+
+  test("generates changelog without wiki-links", () => {
+    const result = generateChangelog(
+      files,
+      "YYYY-MM-DD[T]HHmm",
+      false,
+      "",
+      formatter,
+    );
+    expect(result).toBe(
+      "- 2026-01-15T1430 \u00b7 Note B\n- 2026-01-15T1400 \u00b7 Note A\n",
     );
   });
 

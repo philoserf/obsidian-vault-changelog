@@ -163,13 +163,13 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           .setValue(settings.maxRecentFiles.toString())
           .onChange(async (value) => {
             const numValue = Number(value);
-            if (Number.isNaN(numValue) || numValue < 1) {
+            if (Number.isNaN(numValue)) {
               text.setValue(settings.maxRecentFiles.toString());
               return;
             }
-            const flooredValue = Math.min(
-              Math.floor(numValue),
-              MAX_RECENT_FILES,
+            const flooredValue = Math.max(
+              1,
+              Math.min(Math.floor(numValue), MAX_RECENT_FILES),
             );
             settings.maxRecentFiles = flooredValue;
             text.setValue(flooredValue.toString());
@@ -219,11 +219,13 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           const input = button.buttonEl.parentElement?.querySelector("input");
           if (input) {
             const folder = normalizePath(input.value);
-            if (
-              folder &&
-              folder !== "." &&
-              !settings.excludedFolders.includes(folder)
-            ) {
+            if (!folder || folder === ".") {
+              new Notice(
+                "Excluded folder path cannot be empty or the vault root",
+              );
+              return;
+            }
+            if (!settings.excludedFolders.includes(folder)) {
               settings.excludedFolders.push(folder);
               await this.plugin.saveSettings();
               input.value = "";
