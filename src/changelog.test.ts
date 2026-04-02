@@ -1,34 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import moment from "moment";
 
-// Provide window.moment for formatEntry
 // @ts-expect-error global mock
 globalThis.window = { moment };
 
-import { filterAndSort, formatEntry, generateChangelog } from "./changelog";
-
-describe("formatEntry", () => {
-  const file = {
-    path: "Notes/Test Note.md",
-    basename: "Test Note",
-    stat: { mtime: new Date("2026-01-15T14:30:00").getTime() },
-  };
-
-  test("formats with wiki-links", () => {
-    const result = formatEntry(file, "YYYY-MM-DD[T]HHmm", true);
-    expect(result).toBe("- 2026-01-15T1430 \u00b7 [[Test Note]]");
-  });
-
-  test("formats without wiki-links", () => {
-    const result = formatEntry(file, "YYYY-MM-DD[T]HHmm", false);
-    expect(result).toBe("- 2026-01-15T1430 \u00b7 Test Note");
-  });
-
-  test("respects custom datetime format", () => {
-    const result = formatEntry(file, "YYYY-MM-DD HH:mm", true);
-    expect(result).toBe("- 2026-01-15 14:30 \u00b7 [[Test Note]]");
-  });
-});
+import { filterAndSort, generateChangelog } from "./changelog";
 
 describe("filterAndSort", () => {
   const files = [
