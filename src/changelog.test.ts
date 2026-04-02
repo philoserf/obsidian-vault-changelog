@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import moment from "moment";
 
-// @ts-expect-error global mock
-globalThis.window = { moment };
-
 import { filterAndSort, generateChangelog } from "./changelog";
+
+const formatter = (mtime: number, fmt: string) => moment(mtime).format(fmt);
 
 describe("filterAndSort", () => {
   const files = [
@@ -83,7 +82,13 @@ describe("generateChangelog", () => {
   ];
 
   test("generates changelog without heading", () => {
-    const result = generateChangelog(files, "YYYY-MM-DD[T]HHmm", true, "");
+    const result = generateChangelog(
+      files,
+      "YYYY-MM-DD[T]HHmm",
+      true,
+      "",
+      formatter,
+    );
     expect(result).toBe(
       "- 2026-01-15T1430 \u00b7 [[Note B]]\n- 2026-01-15T1400 \u00b7 [[Note A]]\n",
     );
@@ -95,12 +100,19 @@ describe("generateChangelog", () => {
       "YYYY-MM-DD[T]HHmm",
       true,
       "# Changelog",
+      formatter,
     );
     expect(result).toStartWith("# Changelog\n\n");
   });
 
   test("generates empty changelog", () => {
-    const result = generateChangelog([], "YYYY-MM-DD[T]HHmm", true, "");
+    const result = generateChangelog(
+      [],
+      "YYYY-MM-DD[T]HHmm",
+      true,
+      "",
+      formatter,
+    );
     expect(result).toBe("");
   });
 });
