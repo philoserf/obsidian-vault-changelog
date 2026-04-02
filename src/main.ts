@@ -33,14 +33,14 @@ export default class ChangelogPlugin extends Plugin {
 
     const handler = (file: TAbstractFile) => {
       if (file instanceof TFile && file.path !== this.settings.changelogPath)
-        this.onVaultChange(file);
+        this.onVaultChange();
     };
     this.registerEvent(this.app.vault.on("modify", handler));
     this.registerEvent(this.app.vault.on("delete", handler));
     this.registerEvent(this.app.vault.on("rename", handler));
   }
 
-  onVaultChange(_file: TFile): void {
+  onVaultChange(): void {
     if (!this.settings.autoUpdate) return;
     void this.updateChangelog().catch((err) => {
       console.error("Changelog update failed:", err);
@@ -95,7 +95,7 @@ export default class ChangelogPlugin extends Plugin {
     this.settings.excludedFolders =
       this.settings.excludedFolders.map(normalizePath);
     this.settings.maxRecentFiles = Math.min(
-      this.settings.maxRecentFiles,
+      Math.floor(this.settings.maxRecentFiles),
       MAX_RECENT_FILES,
     );
   }
