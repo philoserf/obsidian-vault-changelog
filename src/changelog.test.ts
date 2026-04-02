@@ -43,12 +43,7 @@ describe("filterAndSort", () => {
   });
 
   test("returns all files when maxRecentFiles exceeds file count", () => {
-    const result = filterAndSort(files, "Changelog.md", [], 25);
-    expect(result).toHaveLength(4);
-  });
-
-  test("handles empty excluded folders", () => {
-    const result = filterAndSort(files, "Changelog.md", [], 25);
+    const result = filterAndSort(files, "Changelog.md", [], 1000);
     expect(result).toHaveLength(4);
   });
 

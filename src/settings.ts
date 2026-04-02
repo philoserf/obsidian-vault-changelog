@@ -166,6 +166,9 @@ export class ChangelogSettingsTab extends PluginSettingTab {
             const numValue = Number(value);
             if (Number.isNaN(numValue) || numValue < 1) {
               text.setValue(settings.maxRecentFiles.toString());
+              new Notice(
+                `Max recent files must be between 1 and ${MAX_RECENT_FILES}`,
+              );
               return;
             }
             const flooredValue = Math.min(
