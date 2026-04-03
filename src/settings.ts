@@ -12,37 +12,32 @@ import type ChangelogPlugin from "./main";
 
 class PathSuggest extends AbstractInputSuggest<string> {
   inputEl: HTMLInputElement;
+  private cachedPaths: string[] | null = null;
 
   constructor(app: App, inputEl: HTMLInputElement) {
     super(app, inputEl);
     this.inputEl = inputEl;
   }
 
+  private getPaths(): string[] {
+    if (this.cachedPaths) return this.cachedPaths;
+
+    const paths: string[] = [];
+    for (const folder of this.app.vault.getAllFolders()) {
+      paths.push(`${folder.path}/`);
+    }
+    for (const file of this.app.vault.getFiles()) {
+      if (file.extension === "md") {
+        paths.push(file.path);
+      }
+    }
+    this.cachedPaths = paths;
+    return paths;
+  }
+
   getSuggestions(inputStr: string): string[] {
-    const lowerCaseInputStr = inputStr.toLowerCase();
-
-    const folders = this.app.vault.getAllFolders();
-    const files = this.app.vault
-      .getFiles()
-      .filter((file) => file.extension === "md");
-
-    const suggestions: string[] = [];
-
-    folders.forEach((folder) => {
-      const folderPath = folder.path;
-      if (folderPath.toLowerCase().contains(lowerCaseInputStr)) {
-        suggestions.push(`${folderPath}/`);
-      }
-    });
-
-    files.forEach((file) => {
-      const filePath = file.path;
-      if (filePath.toLowerCase().contains(lowerCaseInputStr)) {
-        suggestions.push(filePath);
-      }
-    });
-
-    return suggestions;
+    const lowerInput = inputStr.toLowerCase();
+    return this.getPaths().filter((p) => p.toLowerCase().contains(lowerInput));
   }
 
   renderSuggestion(path: string, el: HTMLElement): void {
