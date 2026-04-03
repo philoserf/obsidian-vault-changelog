@@ -85,10 +85,17 @@ export default class ChangelogPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    const loadedSettings = await this.loadData();
+    const loadedSettings = (await this.loadData()) ?? {};
+    const knownKeys = new Set(Object.keys(DEFAULT_SETTINGS));
+    const filtered: Record<string, unknown> = {};
+    for (const key of Object.keys(loadedSettings)) {
+      if (knownKeys.has(key)) {
+        filtered[key] = loadedSettings[key];
+      }
+    }
     this.settings = {
       ...DEFAULT_SETTINGS,
-      ...loadedSettings,
+      ...(filtered as Partial<ChangelogSettings>),
     };
 
     // Normalize persisted folder paths so duplicate detection in the
