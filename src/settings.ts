@@ -212,30 +212,30 @@ export class ChangelogSettingsTab extends PluginSettingTab {
     const excludedFoldersList = containerEl.createDiv("excluded-folders-list");
     this.renderExcludedFolders(excludedFoldersList);
 
+    let folderInputEl: HTMLInputElement;
+
     new Setting(containerEl)
       .setName("Add excluded folder")
       .setDesc("Folders to exclude from the changelog")
       .addText((text) => {
         text.setPlaceholder("folder/path/");
-        new PathSuggest(this.app, text.inputEl);
+        folderInputEl = text.inputEl;
+        new PathSuggest(this.app, folderInputEl);
       })
       .addButton((button) => {
         button.setButtonText("Add").onClick(async () => {
-          const input = button.buttonEl.parentElement?.querySelector("input");
-          if (input) {
-            const folder = normalizePath(input.value);
-            if (!folder || folder === ".") {
-              new Notice(
-                "Excluded folder path cannot be empty or the vault root",
-              );
-              return;
-            }
-            if (!settings.excludedFolders.includes(folder)) {
-              settings.excludedFolders.push(folder);
-              await this.plugin.saveSettings();
-              input.value = "";
-              this.renderExcludedFolders(excludedFoldersList);
-            }
+          const folder = normalizePath(folderInputEl.value);
+          if (!folder || folder === ".") {
+            new Notice(
+              "Excluded folder path cannot be empty or the vault root",
+            );
+            return;
+          }
+          if (!settings.excludedFolders.includes(folder)) {
+            settings.excludedFolders.push(folder);
+            await this.plugin.saveSettings();
+            folderInputEl.value = "";
+            this.renderExcludedFolders(excludedFoldersList);
           }
         });
       });
