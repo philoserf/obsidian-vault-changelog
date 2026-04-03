@@ -25,7 +25,8 @@ if (!ok && !isWatch) process.exit(1);
 if (isWatch) {
   console.log("Watching src/ for changes...");
   let timer: ReturnType<typeof setTimeout> | null = null;
-  watch("src", { recursive: true }, () => {
+  watch("src", { recursive: true }, (_event, filename) => {
+    if (typeof filename === "string" && filename.includes(".test.")) return;
     if (timer) clearTimeout(timer);
     timer = setTimeout(async () => {
       console.log("Rebuilding...");
