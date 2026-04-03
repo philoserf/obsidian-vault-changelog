@@ -105,6 +105,8 @@ export default class ChangelogPlugin extends Plugin {
       : DEFAULT_SETTINGS.maxRecentFiles;
   }
 
+  onunload(): void {}
+
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
   }
