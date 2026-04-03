@@ -172,6 +172,12 @@ sed -n '19,46p' src/main.ts
 ```output
 export default class ChangelogPlugin extends Plugin {
   settings: ChangelogSettings = DEFAULT_SETTINGS;
+  private debouncedVaultChange = debounce(() => {
+    void this.updateChangelog().catch((err) => {
+      console.error("Changelog update failed:", err);
+      new Notice("Failed to update changelog");
+    });
+  }, 200);
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -183,21 +189,15 @@ export default class ChangelogPlugin extends Plugin {
       callback: async () => this.updateChangelog(),
     });
 
-    this.onVaultChange = debounce(this.onVaultChange.bind(this), 200);
-
     const handler = (file: TAbstractFile) => {
       if (
         this.settings.autoUpdate &&
         file instanceof TFile &&
         file.path !== this.settings.changelogPath
       ) {
-        this.onVaultChange();
+        this.debouncedVaultChange();
       }
     };
-    this.registerEvent(this.app.vault.on("modify", handler));
-    this.registerEvent(this.app.vault.on("delete", handler));
-    this.registerEvent(this.app.vault.on("rename", handler));
-  }
 ```
 
 ### `onVaultChange` and `updateChangelog` — The Core Workflow
@@ -211,11 +211,8 @@ sed -n '48,70p' src/main.ts
 ```
 
 ```output
-  onVaultChange(): void {
-    void this.updateChangelog().catch((err) => {
-      console.error("Changelog update failed:", err);
-      new Notice("Failed to update changelog");
-    });
+    this.registerEvent(this.app.vault.on("delete", handler));
+    this.registerEvent(this.app.vault.on("rename", handler));
   }
 
   async updateChangelog(): Promise<void> {
@@ -234,6 +231,9 @@ sed -n '48,70p' src/main.ts
     );
     await this.writeToFile(this.settings.changelogPath, changelog);
   }
+
+  async writeToFile(path: string, content: string): Promise<void> {
+    let file = this.app.vault.getAbstractFileByPath(path);
 ```
 
 ### `writeToFile` — File I/O with TOCTOU Handling
@@ -245,9 +245,6 @@ sed -n '72,88p' src/main.ts
 ```
 
 ```output
-  async writeToFile(path: string, content: string): Promise<void> {
-    let file = this.app.vault.getAbstractFileByPath(path);
-    if (!file) {
       try {
         file = await this.app.vault.create(path, "");
       } catch {
@@ -262,6 +259,9 @@ sed -n '72,88p' src/main.ts
       new Notice(`Could not update changelog at path: ${path}`);
     }
   }
+
+  async loadSettings(): Promise<void> {
+    const loadedSettings = (await this.loadData()) ?? {};
 ```
 
 ### `loadSettings` — Defensive Deserialization
@@ -273,11 +273,15 @@ sed -n '90,111p' src/main.ts
 ```
 
 ```output
-  async loadSettings(): Promise<void> {
-    const loadedSettings = await this.loadData();
+    const filtered: Record<string, unknown> = {};
+    for (const key of Object.keys(loadedSettings)) {
+      if (knownKeys.has(key)) {
+        filtered[key] = loadedSettings[key];
+      }
+    }
     this.settings = {
       ...DEFAULT_SETTINGS,
-      ...loadedSettings,
+      ...(filtered as Partial<ChangelogSettings>),
     };
 
     // Normalize persisted folder paths so duplicate detection in the
@@ -291,10 +295,6 @@ sed -n '90,111p' src/main.ts
       : DEFAULT_SETTINGS.maxRecentFiles;
   }
 
-  async saveSettings(): Promise<void> {
-    await this.saveData(this.settings);
-  }
-}
 ```
 
 ## Settings UI: `settings.ts`
@@ -312,37 +312,32 @@ sed -n '13,57p' src/settings.ts
 ```output
 class PathSuggest extends AbstractInputSuggest<string> {
   inputEl: HTMLInputElement;
+  private cachedPaths: string[] | null = null;
 
   constructor(app: App, inputEl: HTMLInputElement) {
     super(app, inputEl);
     this.inputEl = inputEl;
   }
 
+  private getPaths(): string[] {
+    if (this.cachedPaths) return this.cachedPaths;
+
+    const paths: string[] = [];
+    for (const folder of this.app.vault.getAllFolders()) {
+      paths.push(`${folder.path}/`);
+    }
+    for (const file of this.app.vault.getFiles()) {
+      if (file.extension === "md") {
+        paths.push(file.path);
+      }
+    }
+    this.cachedPaths = paths;
+    return paths;
+  }
+
   getSuggestions(inputStr: string): string[] {
-    const lowerCaseInputStr = inputStr.toLowerCase();
-
-    const folders = this.app.vault.getAllFolders();
-    const files = this.app.vault
-      .getFiles()
-      .filter((file) => file.extension === "md");
-
-    const suggestions: string[] = [];
-
-    folders.forEach((folder) => {
-      const folderPath = folder.path;
-      if (folderPath.toLowerCase().contains(lowerCaseInputStr)) {
-        suggestions.push(`${folderPath}/`);
-      }
-    });
-
-    files.forEach((file) => {
-      const filePath = file.path;
-      if (filePath.toLowerCase().contains(lowerCaseInputStr)) {
-        suggestions.push(filePath);
-      }
-    });
-
-    return suggestions;
+    const lowerInput = inputStr.toLowerCase();
+    return this.getPaths().filter((p) => p.toLowerCase().contains(lowerInput));
   }
 
   renderSuggestion(path: string, el: HTMLElement): void {
@@ -355,6 +350,11 @@ class PathSuggest extends AbstractInputSuggest<string> {
     this.inputEl.dispatchEvent(new Event("blur"));
     this.close();
   }
+}
+
+export class ChangelogSettingsTab extends PluginSettingTab {
+  plugin: ChangelogPlugin;
+
 ```
 
 ### `ChangelogSettingsTab.display` — Settings Form
@@ -371,11 +371,6 @@ sed -n '112,132p' src/settings.ts
 ```
 
 ```output
-    new Setting(containerEl)
-      .setName("Changelog path")
-      .setDesc("Relative path including filename and extension")
-      .addText((text) => {
-        text
           .setPlaceholder("Folder/Changelog.md")
           .setValue(settings.changelogPath);
 
@@ -392,6 +387,11 @@ sed -n '112,132p' src/settings.ts
 
         new PathSuggest(this.app, text.inputEl);
       });
+
+    let datetimePreview: HTMLElement;
+
+    const datetimeSetting = new Setting(containerEl)
+      .setName("Datetime format")
 ```
 
 ### Excluded Folders Management
@@ -403,11 +403,6 @@ sed -n '68,94p' src/settings.ts
 ```
 
 ```output
-  renderExcludedFolders(container: HTMLElement): void {
-    container.empty();
-
-    if (this.plugin.settings.excludedFolders.length === 0) {
-      container.createEl("div", { text: "No excluded folders" });
       return;
     }
 
@@ -430,6 +425,11 @@ sed -n '68,94p' src/settings.ts
       });
     });
   }
+
+  display(): void {
+    const { containerEl } = this;
+    const { settings } = this.plugin;
+
 ```
 
 ## Tests: `changelog.test.ts`
@@ -551,14 +551,14 @@ if (!ok && !isWatch) process.exit(1);
 if (isWatch) {
   console.log("Watching src/ for changes...");
   let timer: ReturnType<typeof setTimeout> | null = null;
-  watch("src", { recursive: true }, () => {
+  watch("src", { recursive: true }, (_event, filename) => {
+    if (typeof filename === "string" && filename.includes(".test.")) return;
     if (timer) clearTimeout(timer);
     timer = setTimeout(async () => {
       console.log("Rebuilding...");
       await build();
     }, 100);
   });
-}
 ```
 
 ## Concerns
@@ -584,4 +584,3 @@ if (isWatch) {
 7. **`generateChangelog` builds strings with `+=` in a loop.** Fine for the capped maximum of 500 files, but an array with a final `.join("\n")` would be more idiomatic and slightly more efficient.
 
 Overall, this is a clean, well-structured plugin with good separation of concerns. The core logic is pure, testable, and tested. The main improvement opportunities are in expanding test coverage to the integration and UI layers.
-

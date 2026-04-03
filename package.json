@@ -1,6 +1,6 @@
 {
   "name": "obsidian-vault-changelog",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Maintain a changelog of recently edited notes in Obsidian",
   "main": "main.js",
   "author": "Mark Ayers",

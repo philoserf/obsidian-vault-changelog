@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.5.0
+
+### Fixed
+
+- Cache vault paths in PathSuggest to avoid per-keystroke scanning
+- Strip stale settings keys when loading persisted data
+- Skip rebuild when test files change in watch mode
+- Capture text input reference instead of DOM traversal
+- Render datetime preview below its setting input
+- Add onunload method to ChangelogPlugin
+
+### Changed
+
+- Use dedicated property for debounced vault change handler
+
+### Internal
+
+- Bump actions/checkout from 4 to 6
+- CI workflow updates
+- Bump @types/node to 25.5.2
+
 ## 1.4.0
 
 ### Refactors
