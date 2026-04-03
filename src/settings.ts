@@ -131,12 +131,9 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         new PathSuggest(this.app, text.inputEl);
       });
 
-    const datetimePreview = containerEl.createEl("div", {
-      cls: "setting-item-description",
-      text: `Preview: ${window.moment().format(settings.datetimeFormat)}`,
-    });
+    let datetimePreview: HTMLElement;
 
-    new Setting(containerEl)
+    const datetimeSetting = new Setting(containerEl)
       .setName("Datetime format")
       .setDesc("Moment.js format string")
       .addText((text) =>
@@ -153,6 +150,10 @@ export class ChangelogSettingsTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           }),
       );
+
+    datetimePreview = datetimeSetting.descEl.createEl("div", {
+      text: `Preview: ${window.moment().format(settings.datetimeFormat)}`,
+    });
 
     new Setting(containerEl)
       .setName("Max recent files")
