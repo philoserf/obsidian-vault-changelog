@@ -18,6 +18,12 @@ import { ChangelogSettingsTab } from "./settings";
 
 export default class ChangelogPlugin extends Plugin {
   settings: ChangelogSettings = DEFAULT_SETTINGS;
+  private debouncedVaultChange = debounce(() => {
+    void this.updateChangelog().catch((err) => {
+      console.error("Changelog update failed:", err);
+      new Notice("Failed to update changelog");
+    });
+  }, 200);
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -29,27 +35,18 @@ export default class ChangelogPlugin extends Plugin {
       callback: async () => this.updateChangelog(),
     });
 
-    this.onVaultChange = debounce(this.onVaultChange.bind(this), 200);
-
     const handler = (file: TAbstractFile) => {
       if (
         this.settings.autoUpdate &&
         file instanceof TFile &&
         file.path !== this.settings.changelogPath
       ) {
-        this.onVaultChange();
+        this.debouncedVaultChange();
       }
     };
     this.registerEvent(this.app.vault.on("modify", handler));
     this.registerEvent(this.app.vault.on("delete", handler));
     this.registerEvent(this.app.vault.on("rename", handler));
-  }
-
-  onVaultChange(): void {
-    void this.updateChangelog().catch((err) => {
-      console.error("Changelog update failed:", err);
-      new Notice("Failed to update changelog");
-    });
   }
 
   async updateChangelog(): Promise<void> {
