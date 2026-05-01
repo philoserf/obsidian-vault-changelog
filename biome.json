@@ -6,8 +6,16 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignoreUnknown": true,
-    "includes": ["**", "!main.js", "!styles.css"]
+    "includes": [
+      "src/**/*.ts",
+      "src/**/*.js",
+      "*.json",
+      "scripts/**/*.ts",
+      "version-bump.ts",
+      "build.ts",
+      "deploy.ts"
+    ],
+    "ignoreUnknown": true
   },
   "formatter": {
     "indentStyle": "space"

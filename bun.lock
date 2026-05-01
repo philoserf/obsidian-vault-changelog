@@ -5,12 +5,12 @@
     "": {
       "name": "obsidian-vault-changelog",
       "devDependencies": {
-        "@biomejs/biome": "latest",
-        "@types/bun": "latest",
-        "@types/node": "latest",
-        "moment": "latest",
-        "obsidian": "latest",
-        "typescript": "latest",
+        "@biomejs/biome": "^2.4.10",
+        "@types/bun": "^1.3.11",
+        "@types/node": "^25.5.2",
+        "moment": "^2.30.1",
+        "obsidian": "^1.12.3",
+        "typescript": "^6.0.2",
       },
     },
   },

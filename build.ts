@@ -2,34 +2,40 @@ import { watch } from "node:fs";
 
 const isWatch = process.argv.includes("--watch");
 
-async function build(): Promise<boolean> {
+async function build() {
   const result = await Bun.build({
     entrypoints: ["src/main.ts"],
     outdir: ".",
     format: "cjs",
     external: ["obsidian", "electron"],
     minify: !isWatch,
+    sourcemap: isWatch ? "linked" : "none",
   });
 
   if (!result.success) {
     console.error("Build failed");
     for (const message of result.logs) console.error(message);
-    return false;
+    if (!isWatch) process.exit(1);
+    return;
   }
-  return true;
+
+  console.log(
+    `Built main.js (${(result.outputs[0].size / 1024).toFixed(1)} KB)`,
+  );
 }
 
-const ok = await build();
-if (!ok && !isWatch) process.exit(1);
+await build();
 
 if (isWatch) {
   console.log("Watching src/ for changes...");
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+
   watch("src", { recursive: true }, (_event, filename) => {
-    if (typeof filename === "string" && filename.includes(".test.")) return;
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(async () => {
-      console.log("Rebuilding...");
+    if (!filename?.endsWith(".ts")) return;
+    if (filename.includes(".test.")) return;
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(async () => {
+      console.log(`\nRebuilding (${filename} changed)...`);
       await build();
     }, 100);
   });

@@ -17,7 +17,7 @@
     "format:check": "biome format .",
     "version": "bun run version-bump.ts",
     "test": "bun test",
-    "deploy": "cp main.js manifest.json styles.css ~/source/philoserf/notes/.obsidian/plugins/obsidian-vault-changelog/"
+    "deploy": "bun run deploy.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.10",
