@@ -33,9 +33,11 @@ if (isWatch) {
     if (!filename?.endsWith(".ts")) return;
     if (filename.includes(".test.")) return;
     if (timeout) clearTimeout(timeout);
-    timeout = setTimeout(async () => {
+    timeout = setTimeout(() => {
       console.log(`\nRebuilding (${filename} changed)...`);
-      await build();
+      build().catch((err) => {
+        console.error("Rebuild failed:", err);
+      });
     }, 100);
   });
 }
