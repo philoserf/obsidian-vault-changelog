@@ -81,7 +81,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         const index = this.plugin.settings.excludedFolders.indexOf(folder);
         if (index > -1) {
           this.plugin.settings.excludedFolders.splice(index, 1);
-          void this.plugin.saveSettings();
+          this.plugin.saveSettingsSafely();
           this.renderExcludedFolders(container);
         }
       });
@@ -100,7 +100,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle.setValue(settings.autoUpdate).onChange((value) => {
           settings.autoUpdate = value;
-          void this.plugin.saveSettings();
+          this.plugin.saveSettingsSafely();
         }),
       );
 
@@ -120,7 +120,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
             return;
           }
           settings.changelogPath = normalized;
-          void this.plugin.saveSettings();
+          this.plugin.saveSettingsSafely();
         });
 
         new PathSuggest(this.app, text.inputEl);
@@ -142,7 +142,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
             }
             settings.datetimeFormat = nextFormat;
             datetimePreview.textContent = `Preview: ${window.moment().format(nextFormat)}`;
-            void this.plugin.saveSettings();
+            this.plugin.saveSettingsSafely();
           }),
       );
 
@@ -168,7 +168,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           const flooredValue = Math.min(Math.floor(numValue), MAX_RECENT_FILES);
           settings.maxRecentFiles = flooredValue;
           text.setValue(flooredValue.toString());
-          void this.plugin.saveSettings();
+          this.plugin.saveSettingsSafely();
         }),
       );
 
@@ -178,7 +178,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle.setValue(settings.useWikiLinks).onChange((value) => {
           settings.useWikiLinks = value;
-          void this.plugin.saveSettings();
+          this.plugin.saveSettingsSafely();
         }),
       );
 
@@ -193,7 +193,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           .setValue(settings.changelogHeading)
           .onChange((value) => {
             settings.changelogHeading = value;
-            void this.plugin.saveSettings();
+            this.plugin.saveSettingsSafely();
           }),
       );
 
@@ -223,7 +223,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           }
           if (!settings.excludedFolders.includes(folder)) {
             settings.excludedFolders.push(folder);
-            void this.plugin.saveSettings();
+            this.plugin.saveSettingsSafely();
             folderInputEl.value = "";
             this.renderExcludedFolders(excludedFoldersList);
           }

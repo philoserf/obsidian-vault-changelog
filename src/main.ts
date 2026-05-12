@@ -32,7 +32,9 @@ export default class ChangelogPlugin extends Plugin {
       id: "update-changelog",
       name: "Update Changelog",
       callback: () => {
-        void this.updateChangelog();
+        this.updateChangelog().catch(() => {
+          new Notice("Failed to update changelog");
+        });
       },
     });
 
@@ -114,5 +116,11 @@ export default class ChangelogPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+  }
+
+  saveSettingsSafely(): void {
+    this.saveSettings().catch(() => {
+      new Notice("Failed to save changelog settings");
+    });
   }
 }
