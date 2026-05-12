@@ -1,5 +1,3 @@
-import { watch } from "node:fs";
-
 const isWatch = process.argv.includes("--watch");
 
 async function build() {
@@ -28,6 +26,7 @@ await build();
 
 if (isWatch) {
   console.log("Watching src/ for changes...");
+  const { watch } = await import("node:fs");
   let timeout: ReturnType<typeof setTimeout> | null = null;
 
   watch("src", { recursive: true }, (_event, filename) => {
@@ -40,3 +39,5 @@ if (isWatch) {
     }, 100);
   });
 }
+
+export {};
