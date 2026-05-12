@@ -162,7 +162,7 @@ export function filterAndSort(
 }
 ```
 
-The `folder.endsWith("/") ? folder : ${folder}/` guard prevents prefix collisions:
+The ``folder.endsWith("/") ? folder : `${folder}/` `` guard prevents prefix collisions:
 excluding `Notes` should not match `Notebook/file.md`. The test
 `does not exclude folders that share a prefix` in `changelog.test.ts` pins this
 behavior.
