@@ -1,7 +1,7 @@
 # Obsidian Vault Changelog Walkthrough
 
-*2026-05-01T22:47:10Z by Showboat 0.6.1*
-<!-- showboat-id: c44e6c1c-d7b5-4144-971a-07cbeb2fe00e -->
+*2026-05-12T18:26:25Z by Showboat 0.6.1*
+<!-- showboat-id: 248137d3-710b-4f04-a2e0-bf03d37fcc10 -->
 
 ## Overview
 
@@ -26,25 +26,53 @@ cat manifest.json
 {
   "id": "obsidian-vault-changelog",
   "name": "Vault Changelog",
-  "version": "1.5.0",
-  "minAppVersion": "1.0.0",
-  "description": "Maintain a changelog of recently edited notes",
+  "version": "1.5.1",
+  "minAppVersion": "1.6.6",
+  "description": "Maintain a changelog of recently edited notes.",
   "author": "Mark Ayers (originally by Badr Bouslikhin)",
   "authorUrl": "https://github.com/philoserf",
+  "fundingUrl": "https://buymeacoffee.com/philoserf",
   "isDesktopOnly": false
 }
 ```
 
 The `manifest.json` is what Obsidian reads to register the plugin. `id` becomes
-the plugin folder name; `minAppVersion` gates which Obsidian releases will load it;
-`isDesktopOnly: false` means the plugin runs on mobile too (which constrains the
-APIs used — no Node `fs`, no `child_process`).
+the plugin folder name; `minAppVersion: 1.6.6` is the floor for the APIs the plugin
+uses (`Vault.getAllFolders`, `AbstractInputSuggest`). `isDesktopOnly: false` means
+the plugin runs on mobile too, which constrains the APIs used — no Node `fs`, no
+`child_process`.
+
+The compatibility gate is enforced via `versions.json` separately from `manifest.json`.
+Obsidian's plugin browser reads `versions.json` from the plugin's default branch to
+decide which plugin versions to offer to which Obsidian releases:
+
+```bash
+cat versions.json
+```
+
+```output
+{
+  "0.1.0": "0.9.7",
+  "1.0.0": "1.0.0",
+  "1.1.0": "1.0.0",
+  "1.2.0": "1.0.0",
+  "1.3.0": "1.0.0",
+  "1.4.0": "1.0.0",
+  "1.5.0": "1.6.6",
+  "1.5.1": "1.6.6"
+}
+```
+
+The `1.5.0` entry maps to `1.6.6` because PR #166 raised the required APIs;
+PR #167 then fixed the previously-stale `versions.json` entry so older Obsidian
+clients won't be offered an incompatible plugin update. `version-bump.ts`
+appends new entries automatically.
 
 ## Architecture
 
 The repo splits the plugin code into three modules under `src/`. The split is
-intentional: `changelog.ts` is pure logic with no Obsidian imports so it is easy to
-test, and `main.ts` / `settings.ts` handle everything that needs the Obsidian
+intentional: `changelog.ts` is pure logic with no Obsidian imports so it is easy
+to test, and `main.ts` / `settings.ts` handle everything that needs the Obsidian
 runtime (vault I/O, the settings UI, debounced events).
 
 ```bash
@@ -105,9 +133,9 @@ export const MAX_RECENT_FILES = 500;
 ### `filterAndSort`
 
 Takes the vault's markdown files and produces the list that becomes the changelog
-body. Three concerns: drop the changelog file itself (so updating it doesn't bring
-itself to the top), drop files inside any excluded folder, sort by `mtime`
-descending, and cap at `maxRecentFiles`.
+body. Drops the changelog file itself (so updating it doesn't bring itself to the
+top), drops files inside any excluded folder, sorts by `mtime` descending, caps
+at `maxRecentFiles`.
 
 ```bash
 sed -n '29,46p' src/changelog.ts
@@ -134,7 +162,7 @@ export function filterAndSort(
 }
 ```
 
-The `folder.endsWith("/") ? folder : \`${folder}/\`` guard prevents prefix collisions:
+The ``folder.endsWith("/") ? folder : `${folder}/` `` guard prevents prefix collisions:
 excluding `Notes` should not match `Notebook/file.md`. The test
 `does not exclude folders that share a prefix` in `changelog.test.ts` pins this
 behavior.
@@ -180,15 +208,14 @@ the `settings` (initialized to `DEFAULT_SETTINGS` so the type is non-optional)
 and a `debouncedVaultChange` function created via Obsidian's `debounce` helper.
 
 ```bash
-sed -n '19,27p' src/main.ts
+sed -n '19,26p' src/main.ts
 ```
 
 ```output
 export default class ChangelogPlugin extends Plugin {
   settings: ChangelogSettings = DEFAULT_SETTINGS;
   private debouncedVaultChange = debounce(() => {
-    void this.updateChangelog().catch((err) => {
-      console.error("Changelog update failed:", err);
+    void this.updateChangelog().catch(() => {
       new Notice("Failed to update changelog");
     });
   }, 200);
@@ -197,8 +224,9 @@ export default class ChangelogPlugin extends Plugin {
 
 The 200ms `debounce` collapses bursts of vault events. The arrow form means `this`
 binds to the instance once, at field-init time, so the callback can reach
-`this.updateChangelog`. Errors from the async update are caught and surfaced via
-both `console.error` and a user-facing `Notice`.
+`this.updateChangelog`. The `.catch()` (PR #167) catches rejections from the
+async update and surfaces a user-facing `Notice` instead of leaking an unhandled
+promise rejection.
 
 ### `onload`: wiring up the plugin
 
@@ -206,7 +234,7 @@ both `console.error` and a user-facing `Notice`.
 the settings tab, registers a single command, and subscribes to three vault events.
 
 ```bash
-sed -n '28,50p' src/main.ts
+sed -n '27,51p' src/main.ts
 ```
 
 ```output
@@ -217,7 +245,11 @@ sed -n '28,50p' src/main.ts
     this.addCommand({
       id: "update-changelog",
       name: "Update Changelog",
-      callback: async () => this.updateChangelog(),
+      callback: () => {
+        this.updateChangelog().catch(() => {
+          new Notice("Failed to update changelog");
+        });
+      },
     });
 
     const handler = (file: TAbstractFile) => {
@@ -231,9 +263,12 @@ sed -n '28,50p' src/main.ts
     };
     this.registerEvent(this.app.vault.on("modify", handler));
     this.registerEvent(this.app.vault.on("delete", handler));
-    this.registerEvent(this.app.vault.on("rename", handler));
-  }
 ```
+
+The command callback (PR #167) returns void and routes rejections through the same
+`Notice` path the debounced updater uses — PR #166 originally rewrote this from
+`async () => ...` to `void this.updateChangelog()` to satisfy the Obsidian plugin
+checker, but `void` doesn't suppress rejections, so #167 added the `.catch()`.
 
 Three guards on the auto-update path:
 
@@ -243,8 +278,7 @@ Three guards on the auto-update path:
    write would re-trigger the update via `modify`, an infinite loop.
 
 The events are registered through `this.registerEvent(...)` so Obsidian unbinds
-them automatically on plugin disable. That is why `onunload` (line 112) is empty
-and correct.
+them automatically on plugin disable.
 
 ### `updateChangelog`: the main pipeline
 
@@ -252,10 +286,11 @@ Called from both the command and the debounced event. Runs the pure pipeline
 (`filterAndSort` → `generateChangelog`) and writes the result.
 
 ```bash
-sed -n '52,67p' src/main.ts
+sed -n '54,70p' src/main.ts
 ```
 
 ```output
+
   async updateChangelog(): Promise<void> {
     const recentFiles = filterAndSort(
       this.app.vault.getMarkdownFiles(),
@@ -287,7 +322,7 @@ event handler could create the file, causing `vault.create` to throw. The fallba
 re-fetches the file before giving up.
 
 ```bash
-sed -n '69,85p' src/main.ts
+sed -n '72,88p' src/main.ts
 ```
 
 ```output
@@ -316,13 +351,13 @@ the user sees a `Notice`.
 
 ### `loadSettings`: defensive deserialization
 
-This is the most carefully-written method in the plugin. It defends against three
+The most carefully-written method in the plugin. It defends against three
 classes of bad persisted data: **stale keys** (settings that existed in older
-versions but have since been removed/renamed), **un-normalized paths** (which would
-break duplicate detection in the UI), and **out-of-range numbers**.
+versions but have since been removed/renamed), **un-normalized paths** (which
+would break duplicate detection in the UI), and **out-of-range numbers**.
 
 ```bash
-sed -n '87,110p' src/main.ts
+sed -n '90,113p' src/main.ts
 ```
 
 ```output
@@ -357,13 +392,45 @@ Three defensive steps:
 1. **Strip unknown keys.** `Object.keys(DEFAULT_SETTINGS)` is the schema. Anything
    in `loadedSettings` not in that set is dropped before merging.
 2. **Normalize paths.** `normalizePath` collapses backslashes, multiple slashes,
-   trims `.`/`..` segments — so `Archive/` and `archive` and `Archive//` all reach
-   the same canonical form. Without this, the UI's duplicate-add check would let
-   the same folder appear twice.
+   trims `.`/`..` segments — so `Archive/` and `archive` and `Archive//` all
+   reach the same canonical form. Without this, the UI's duplicate-add check
+   would let the same folder appear twice.
 3. **Clamp the file count.** `maxRecentFiles` is coerced to a finite number,
    floored, and clamped to `[1, 500]`. A bad value falls back to the default.
 
-Issue #147 tracks adding test coverage for this method.
+Issues #165 and #147 track extracting this normalization into a testable function
+and adding direct coverage.
+
+### `saveSettings` and `saveSettingsSafely`
+
+Two persistence entry points. `saveSettings` writes through Obsidian's `saveData`
+and surfaces failures by rejecting the returned promise. `saveSettingsSafely`
+(added in PR #167) is the fire-and-forget wrapper used by all settings-UI
+callbacks — it catches rejections and surfaces a `Notice` so failed saves don't
+become unhandled promise rejections.
+
+```bash
+sed -n '115,126p' src/main.ts
+```
+
+```output
+  onunload(): void {}
+
+  async saveSettings(): Promise<void> {
+    await this.saveData(this.settings);
+  }
+
+  saveSettingsSafely(): void {
+    this.saveSettings().catch(() => {
+      new Notice("Failed to save changelog settings");
+    });
+  }
+}
+```
+
+The empty `onunload()` is correct — `registerEvent`, `addCommand`, and
+`addSettingTab` all auto-clean on disable, so there's nothing for the plugin
+to release manually.
 
 ## Settings UI: `src/settings.ts`
 
@@ -430,11 +497,18 @@ invalidation strategy: open settings and you get a fresh path list.
 `selectSuggestion` triggers both `input` and `blur` events so the surrounding
 `Setting`'s blur handler fires (the changelog-path field validates on blur).
 
+`Vault.getAllFolders()` and `AbstractInputSuggest` are the two APIs that pushed
+`minAppVersion` to 1.6.6 in PR #166.
+
 ### `ChangelogSettingsTab.display`: rendering the panel
 
 Obsidian calls `display()` whenever the settings tab opens. Each `Setting` is
-constructed and pushed into `containerEl`; saving on change goes through the
-plugin's `saveSettings()` (which delegates to Obsidian's `saveData`).
+constructed and pushed into `containerEl`. The save path is the
+`saveSettingsSafely()` helper described above — PR #166 rewrote these as
+sync callbacks (to satisfy the Obsidian plugin checker's "promise returned
+in function argument where a void return was expected" warning), and PR #167
+routed them through the helper so save failures surface a `Notice` instead
+of becoming unhandled promise rejections.
 
 The path-input setting validates on blur — the value must end in `.md`, otherwise
 the input is reverted and a `Notice` is shown.
@@ -452,7 +526,7 @@ sed -n '107,127p' src/settings.ts
           .setPlaceholder("Folder/Changelog.md")
           .setValue(settings.changelogPath);
 
-        text.inputEl.addEventListener("blur", async () => {
+        text.inputEl.addEventListener("blur", () => {
           const normalized = normalizePath(text.getValue());
           if (!normalized.endsWith(".md")) {
             text.setValue(settings.changelogPath);
@@ -460,7 +534,7 @@ sed -n '107,127p' src/settings.ts
             return;
           }
           settings.changelogPath = normalized;
-          await this.plugin.saveSettings();
+          this.plugin.saveSettingsSafely();
         });
 
         new PathSuggest(this.app, text.inputEl);
@@ -477,7 +551,7 @@ Excluded folders use a bespoke add/remove UI (Obsidian's `Setting` doesn't have 
 list primitive). `renderExcludedFolders` re-renders the list on every change.
 
 ```bash
-sed -n '212,237p' src/settings.ts
+sed -n '207,232p' src/settings.ts
 ```
 
 ```output
@@ -490,7 +564,7 @@ sed -n '212,237p' src/settings.ts
         new PathSuggest(this.app, folderInputEl);
       })
       .addButton((button) => {
-        button.setButtonText("Add").onClick(async () => {
+        button.setButtonText("Add").onClick(() => {
           const folder = normalizePath(folderInputEl.value);
           if (!folder || folder === ".") {
             new Notice(
@@ -500,7 +574,7 @@ sed -n '212,237p' src/settings.ts
           }
           if (!settings.excludedFolders.includes(folder)) {
             settings.excludedFolders.push(folder);
-            await this.plugin.saveSettings();
+            this.plugin.saveSettingsSafely();
             folderInputEl.value = "";
             this.renderExcludedFolders(excludedFoldersList);
           }
@@ -509,9 +583,9 @@ sed -n '212,237p' src/settings.ts
   }
 ```
 
-Note that the input is normalized before the duplicate check, but `filterAndSort`
-appends the trailing `/` itself when matching — so excluded folders saved without
-a trailing slash still work. Issue #162 tracks a regression test for this.
+The input is normalized before the duplicate check, but `filterAndSort` appends
+the trailing `/` itself when matching — so excluded folders saved without a
+trailing slash still work. Issue #162 tracks a regression test for this.
 
 ## Tests: `src/changelog.test.ts`
 
@@ -536,7 +610,7 @@ Bun's native bundler produces a single CommonJS `main.js` from `src/main.ts`.
 Obsidian and electron are externals — they are provided by the host at runtime.
 
 ```bash
-sed -n '5,25p' build.ts
+sed -n '3,23p' build.ts
 ```
 
 ```output
@@ -564,9 +638,44 @@ async function build() {
 ```
 
 Watch mode disables `minify`, enables `linked` sourcemaps for debugging, and keeps
-the process alive instead of `process.exit(1)` on a build failure. The watcher
-filters to `.ts` files and skips `.test.` files so test edits don't trigger
-rebuilds (commit `6d65db9`).
+the process alive instead of `process.exit(1)` on a build failure.
+
+### Watch mode: lazy `node:fs` import
+
+PR #166 moved `node:fs` from a top-level import to a dynamic import inside the
+`isWatch` branch. The plugin checker forbids unconditional Node-only imports —
+they break on mobile — but `build.ts` is a desktop-only build script, so the
+fix is to load `node:fs` only when actually watching. PR #167 then fixed the
+`setTimeout` callback so it returns void and logs `build()` rejections instead
+of dropping them.
+
+```bash
+sed -n '27,43p' build.ts
+```
+
+```output
+if (isWatch) {
+  console.log("Watching src/ for changes...");
+  const { watch } = await import("node:fs");
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+
+  watch("src", { recursive: true }, (_event, filename) => {
+    if (!filename?.endsWith(".ts")) return;
+    if (filename.includes(".test.")) return;
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      console.log(`\nRebuilding (${filename} changed)...`);
+      build().catch((err) => {
+        console.error("Rebuild failed:", err);
+      });
+    }, 100);
+  });
+}
+```
+
+The trailing `export {}` (line 43) keeps the file an ES module after the only
+static import was removed, so top-level `await` still works without TypeScript
+complaining.
 
 ## Version sync: `version-bump.ts`
 
@@ -600,10 +709,11 @@ console.log(`Updated to version ${targetVersion}`);
 export {};
 ```
 
-The trailing `export {}` makes the file a module so `await` at top level works
-without TypeScript complaining (script-mode `await` would hit `--isolatedModules`
-or related options). Bun-native `Bun.file` / `Bun.write` replaced the older
-`node:fs` `readFileSync`/`writeFileSync` calls.
+The trailing `export {}` makes the file a module so `await` at top level works.
+Bun-native `Bun.file` / `Bun.write` replaced the older `node:fs` calls. Note
+that the new `versions.json` entry uses whatever `minAppVersion` is currently
+in `manifest.json` — so bumping `minAppVersion` and bumping plugin version
+should happen in the same step.
 
 ## Deploy: `deploy.ts`
 
@@ -711,9 +821,9 @@ today.
 ### Test coverage gap
 
 Only `changelog.ts` is tested. `loadSettings` (key stripping, normalization,
-`maxRecentFiles` clamp) is the most behavior-rich method in `main.ts` and has no
-direct coverage. The `writeToFile` TOCTOU fallback is also untested. Issues #147
-and #165 are open against this.
+`maxRecentFiles` clamp) is the most behavior-rich method in `main.ts` and has
+no direct coverage. The `writeToFile` TOCTOU fallback is also untested. Issues
+#147 and #165 are open against this.
 
 ### Implicit dependency on `window.moment`
 
@@ -732,17 +842,15 @@ extracting a single `clampMaxRecentFiles` function in `changelog.ts`.
 
 The heading is concatenated into the changelog content verbatim. A user could
 type anything — including markdown that breaks the document or HTML/script tags
-(which Obsidian renders). Issue #164 tracks this. Severity is low because the
-input source is the user themselves, but a documented constraint or a basic
-strip pass would be better than silent passthrough.
+(which Obsidian renders). Issue #164 tracks this.
 
 ### `PathSuggest` cache is per-instance, never invalidated
 
 A `PathSuggest` built when the settings tab opens will not see folders or notes
 created afterward in the same session. Closing and reopening settings constructs
 fresh instances, so the staleness window is bounded by how long the user keeps
-the panel open. Acceptable for now (commit `b50d8d5` traded freshness for keystroke
-performance), but worth noting.
+the panel open. Acceptable for now (commit `b50d8d5` traded freshness for
+keystroke performance), but worth noting.
 
 ### `ChangelogSettings` interface lives in the pure module
 
@@ -755,25 +863,16 @@ between `main.ts` and `settings.ts`, which is the more important constraint.
 
 If a user points the changelog path at a real note they care about, the plugin
 silently overwrites it on the next update. The `.md` blur-validation prevents
-typos, but not collisions. A "this file already exists and isn't empty —
-overwrite?" prompt on first save would prevent data loss.
+typos, but not collisions.
 
-### Empty-files render is opaque
+### Save-error feedback is non-blocking
 
-`generateChangelog([], ...)` returns `""` — including the heading. From the
-user's perspective, an empty changelog with no heading looks identical to
-"plugin didn't run". Emitting just the heading on empty input would make the
-plugin's status legible.
+`saveSettingsSafely` (PR #167) surfaces save failures via `Notice`, but the UI
+state mutation already happened — so a failed save leaves the in-memory state
+diverged from disk until the next successful save. Acceptable for `saveData`
+backed by local disk; would be worse for a remote-backed store.
 
-### Excluded folders use Unicode glyphs for buttons
+### Excluded folders use a Unicode glyph for the remove button
 
-The remove button in `renderExcludedFolders` uses `"✕"` text. Obsidian's UI
-convention is `setIcon(button, "x")` (Lucide), which respects theme styling.
-A small consistency miss, not a correctness issue.
-
-### `onunload` is empty
-
-Correct — `registerEvent`, `addCommand`, and `addSettingTab` all auto-clean on
-disable. A one-line comment explaining why the method is intentionally empty
-would prevent a future contributor from "fixing" it.
-
+`renderExcludedFolders` uses `"✕"` text. Obsidian's UI convention is
+`setIcon(button, "x")` (Lucide), which respects theme styling.

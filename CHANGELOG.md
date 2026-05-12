@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.5.1
+
+### Fixed
+
+- Resolve all 16 Obsidian community plugin checker warnings (#166)
+- Align `versions.json` with `manifest.json` `minAppVersion` so Obsidian's plugin browser stops offering 1.5.0 to Obsidian < 1.6.6 (#167)
+- Handle promise rejections in fire-and-forget call sites; settings-save and command failures now surface a `Notice` instead of becoming unhandled rejections (#167)
+
+### Added
+
+- `fundingUrl` in `manifest.json` and `.github/FUNDING.yml` (Buy Me a Coffee)
+
+### Internal
+
+- Bump devDependencies: @biomejs/biome 2.4.15, @types/bun 1.3.13, @types/node 25.7.0, typescript 6.0.3
+
 ## 1.5.0
 
 ### Fixed

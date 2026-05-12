@@ -1,10 +1,11 @@
 {
   "id": "obsidian-vault-changelog",
   "name": "Vault Changelog",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "minAppVersion": "1.6.6",
   "description": "Maintain a changelog of recently edited notes.",
   "author": "Mark Ayers (originally by Badr Bouslikhin)",
   "authorUrl": "https://github.com/philoserf",
+  "fundingUrl": "https://buymeacoffee.com/philoserf",
   "isDesktopOnly": false
 }
