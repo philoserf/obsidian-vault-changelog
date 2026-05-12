@@ -19,8 +19,7 @@ import { ChangelogSettingsTab } from "./settings";
 export default class ChangelogPlugin extends Plugin {
   settings: ChangelogSettings = DEFAULT_SETTINGS;
   private debouncedVaultChange = debounce(() => {
-    void this.updateChangelog().catch((err) => {
-      console.error("Changelog update failed:", err);
+    void this.updateChangelog().catch(() => {
       new Notice("Failed to update changelog");
     });
   }, 200);
@@ -32,7 +31,9 @@ export default class ChangelogPlugin extends Plugin {
     this.addCommand({
       id: "update-changelog",
       name: "Update Changelog",
-      callback: async () => this.updateChangelog(),
+      callback: () => {
+        void this.updateChangelog();
+      },
     });
 
     const handler = (file: TAbstractFile) => {

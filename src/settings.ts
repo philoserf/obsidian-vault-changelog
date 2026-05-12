@@ -64,7 +64,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
     container.empty();
 
     if (this.plugin.settings.excludedFolders.length === 0) {
-      container.createEl("div", { text: "No excluded folders" });
+      container.createDiv({ text: "No excluded folders" });
       return;
     }
 
@@ -77,11 +77,11 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         cls: "excluded-folder-remove",
       });
 
-      removeButton.addEventListener("click", async () => {
+      removeButton.addEventListener("click", () => {
         const index = this.plugin.settings.excludedFolders.indexOf(folder);
         if (index > -1) {
           this.plugin.settings.excludedFolders.splice(index, 1);
-          await this.plugin.saveSettings();
+          void this.plugin.saveSettings();
           this.renderExcludedFolders(container);
         }
       });
@@ -98,9 +98,9 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       .setName("Auto update")
       .setDesc("Automatically update changelog on vault changes")
       .addToggle((toggle) =>
-        toggle.setValue(settings.autoUpdate).onChange(async (value) => {
+        toggle.setValue(settings.autoUpdate).onChange((value) => {
           settings.autoUpdate = value;
-          await this.plugin.saveSettings();
+          void this.plugin.saveSettings();
         }),
       );
 
@@ -112,7 +112,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           .setPlaceholder("Folder/Changelog.md")
           .setValue(settings.changelogPath);
 
-        text.inputEl.addEventListener("blur", async () => {
+        text.inputEl.addEventListener("blur", () => {
           const normalized = normalizePath(text.getValue());
           if (!normalized.endsWith(".md")) {
             text.setValue(settings.changelogPath);
@@ -120,7 +120,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
             return;
           }
           settings.changelogPath = normalized;
-          await this.plugin.saveSettings();
+          void this.plugin.saveSettings();
         });
 
         new PathSuggest(this.app, text.inputEl);
@@ -135,18 +135,18 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         text
           .setPlaceholder("YYYY-MM-DD[T]HHmm")
           .setValue(settings.datetimeFormat)
-          .onChange(async (format) => {
+          .onChange((format) => {
             const nextFormat = format || DEFAULT_SETTINGS.datetimeFormat;
             if (!format) {
               text.setValue(nextFormat);
             }
             settings.datetimeFormat = nextFormat;
             datetimePreview.textContent = `Preview: ${window.moment().format(nextFormat)}`;
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           }),
       );
 
-    datetimePreview = datetimeSetting.descEl.createEl("div", {
+    datetimePreview = datetimeSetting.descEl.createDiv({
       text: `Preview: ${window.moment().format(settings.datetimeFormat)}`,
     });
 
@@ -156,34 +156,29 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         `Maximum number of recently edited files to include (1\u2013${MAX_RECENT_FILES})`,
       )
       .addText((text) =>
-        text
-          .setValue(settings.maxRecentFiles.toString())
-          .onChange(async (value) => {
-            const numValue = Number(value);
-            if (Number.isNaN(numValue) || numValue < 1) {
-              text.setValue(settings.maxRecentFiles.toString());
-              new Notice(
-                `Max recent files must be between 1 and ${MAX_RECENT_FILES}`,
-              );
-              return;
-            }
-            const flooredValue = Math.min(
-              Math.floor(numValue),
-              MAX_RECENT_FILES,
+        text.setValue(settings.maxRecentFiles.toString()).onChange((value) => {
+          const numValue = Number(value);
+          if (Number.isNaN(numValue) || numValue < 1) {
+            text.setValue(settings.maxRecentFiles.toString());
+            new Notice(
+              `Max recent files must be between 1 and ${MAX_RECENT_FILES}`,
             );
-            settings.maxRecentFiles = flooredValue;
-            text.setValue(flooredValue.toString());
-            await this.plugin.saveSettings();
-          }),
+            return;
+          }
+          const flooredValue = Math.min(Math.floor(numValue), MAX_RECENT_FILES);
+          settings.maxRecentFiles = flooredValue;
+          text.setValue(flooredValue.toString());
+          void this.plugin.saveSettings();
+        }),
       );
 
     new Setting(containerEl)
       .setName("Use wiki-links")
       .setDesc("Format filenames as wiki-links [[note]] instead of plain text")
       .addToggle((toggle) =>
-        toggle.setValue(settings.useWikiLinks).onChange(async (value) => {
+        toggle.setValue(settings.useWikiLinks).onChange((value) => {
           settings.useWikiLinks = value;
-          await this.plugin.saveSettings();
+          void this.plugin.saveSettings();
         }),
       );
 
@@ -196,13 +191,13 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         text
           .setPlaceholder("# Changelog")
           .setValue(settings.changelogHeading)
-          .onChange(async (value) => {
+          .onChange((value) => {
             settings.changelogHeading = value;
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           }),
       );
 
-    containerEl.createEl("h3", { text: "Excluded folders" });
+    new Setting(containerEl).setName("Excluded folders").setHeading();
 
     const excludedFoldersList = containerEl.createDiv("excluded-folders-list");
     this.renderExcludedFolders(excludedFoldersList);
@@ -218,7 +213,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         new PathSuggest(this.app, folderInputEl);
       })
       .addButton((button) => {
-        button.setButtonText("Add").onClick(async () => {
+        button.setButtonText("Add").onClick(() => {
           const folder = normalizePath(folderInputEl.value);
           if (!folder || folder === ".") {
             new Notice(
@@ -228,7 +223,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           }
           if (!settings.excludedFolders.includes(folder)) {
             settings.excludedFolders.push(folder);
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
             folderInputEl.value = "";
             this.renderExcludedFolders(excludedFoldersList);
           }
