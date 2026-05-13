@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.2
+
+### Internal
+
+- Attest release-asset build provenance via `actions/attest-build-provenance@v3` (#169). Consumers can verify with `gh attestation verify main.js -R philoserf/obsidian-vault-changelog`.
+
 ## 1.5.1
 
 ### Fixed
