@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.5.3
+
+### Fixed
+
+- Changelog heading is trimmed at the settings boundary and on load, keeping spacing predictable (#164)
+
+### Changed
+
+- Load-time settings normalization extracted to `normalizeLoadedSettings` and tested (#165)
+- `clampMaxRecentFiles` is the single clamping authority for load and UI (#161)
+- Path and excluded-folder validation extracted to pure functions and tested (#147, #162)
+- Update dependencies
+
 ## 1.5.2
 
 ### Internal
