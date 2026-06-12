@@ -10,7 +10,9 @@ import {
 import {
   clampMaxRecentFiles,
   DEFAULT_SETTINGS,
+  isValidChangelogPath,
   MAX_RECENT_FILES,
+  validateExcludedFolder,
 } from "./changelog";
 import type ChangelogPlugin from "./main";
 
@@ -118,7 +120,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 
         text.inputEl.addEventListener("blur", () => {
           const normalized = normalizePath(text.getValue());
-          if (!normalized.endsWith(".md")) {
+          if (!isValidChangelogPath(normalized)) {
             text.setValue(settings.changelogPath);
             new Notice("Changelog path must end with .md");
             return;
@@ -219,13 +221,17 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       .addButton((button) => {
         button.setButtonText("Add").onClick(() => {
           const folder = normalizePath(folderInputEl.value);
-          if (!folder || folder === ".") {
+          const verdict = validateExcludedFolder(
+            folder,
+            settings.excludedFolders,
+          );
+          if (verdict === "invalid") {
             new Notice(
               "Excluded folder path cannot be empty or the vault root",
             );
             return;
           }
-          if (!settings.excludedFolders.includes(folder)) {
+          if (verdict === "ok") {
             settings.excludedFolders.push(folder);
             this.plugin.saveSettingsSafely();
             folderInputEl.value = "";

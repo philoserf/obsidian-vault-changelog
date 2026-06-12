@@ -62,6 +62,27 @@ export function normalizeLoadedSettings(
   return settings;
 }
 
+/** The changelog must be a markdown file; paths are validated post-normalize. */
+export function isValidChangelogPath(normalizedPath: string): boolean {
+  return normalizedPath.endsWith(".md");
+}
+
+export type ExcludedFolderVerdict = "ok" | "invalid" | "duplicate";
+
+/**
+ * Validate a normalized folder path before adding it to excludedFolders:
+ * empty input and the vault root are invalid; an already-listed folder is
+ * a duplicate.
+ */
+export function validateExcludedFolder(
+  normalizedFolder: string,
+  existing: string[],
+): ExcludedFolderVerdict {
+  if (!normalizedFolder || normalizedFolder === ".") return "invalid";
+  if (existing.includes(normalizedFolder)) return "duplicate";
+  return "ok";
+}
+
 interface ChangelogFile {
   path: string;
   basename: string;

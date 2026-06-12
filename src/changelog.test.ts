@@ -6,7 +6,9 @@ import {
   DEFAULT_SETTINGS,
   filterAndSort,
   generateChangelog,
+  isValidChangelogPath,
   normalizeLoadedSettings,
+  validateExcludedFolder,
 } from "./changelog";
 
 const formatter = (mtime: number, fmt: string) => moment(mtime).format(fmt);
@@ -228,5 +230,31 @@ describe("normalizeLoadedSettings", () => {
       identity,
     );
     expect(settings.changelogHeading).toBe("# Changelog");
+  });
+});
+
+describe("isValidChangelogPath", () => {
+  test("accepts a markdown path", () => {
+    expect(isValidChangelogPath("Notes/Changelog.md")).toBe(true);
+  });
+
+  test("rejects non-markdown paths", () => {
+    expect(isValidChangelogPath("Changelog.txt")).toBe(false);
+    expect(isValidChangelogPath("Changelog")).toBe(false);
+  });
+});
+
+describe("validateExcludedFolder", () => {
+  test("accepts a new folder", () => {
+    expect(validateExcludedFolder("Archive", [])).toBe("ok");
+  });
+
+  test("rejects empty input and the vault root", () => {
+    expect(validateExcludedFolder("", [])).toBe("invalid");
+    expect(validateExcludedFolder(".", [])).toBe("invalid");
+  });
+
+  test("flags an already-listed folder as duplicate", () => {
+    expect(validateExcludedFolder("Archive", ["Archive"])).toBe("duplicate");
   });
 });
