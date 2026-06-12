@@ -3,8 +3,10 @@ import moment from "moment";
 
 import {
   clampMaxRecentFiles,
+  DEFAULT_SETTINGS,
   filterAndSort,
   generateChangelog,
+  normalizeLoadedSettings,
 } from "./changelog";
 
 const formatter = (mtime: number, fmt: string) => moment(mtime).format(fmt);
@@ -164,5 +166,60 @@ describe("clampMaxRecentFiles", () => {
     expect(clampMaxRecentFiles("abc")).toBe(25);
     expect(clampMaxRecentFiles(Number.POSITIVE_INFINITY)).toBe(25);
     expect(clampMaxRecentFiles(undefined)).toBe(25);
+  });
+});
+
+describe("normalizeLoadedSettings", () => {
+  const identity = (p: string) => p;
+
+  test("returns defaults for null/undefined data", () => {
+    expect(normalizeLoadedSettings(null, identity)).toEqual(DEFAULT_SETTINGS);
+    expect(normalizeLoadedSettings(undefined, identity)).toEqual(
+      DEFAULT_SETTINGS,
+    );
+  });
+
+  test("drops unknown keys", () => {
+    const settings = normalizeLoadedSettings(
+      { autoUpdate: true, legacySetting: "stale" },
+      identity,
+    );
+    expect(settings.autoUpdate).toBe(true);
+    expect("legacySetting" in settings).toBe(false);
+  });
+
+  test("normalizes changelogPath and excludedFolders", () => {
+    const stripTrailing = (p: string) => p.replace(/\/+$/, "");
+    const settings = normalizeLoadedSettings(
+      {
+        changelogPath: "Notes/Changelog.md/",
+        excludedFolders: ["Archive/", "Templates/"],
+      },
+      stripTrailing,
+    );
+    expect(settings.changelogPath).toBe("Notes/Changelog.md");
+    expect(settings.excludedFolders).toEqual(["Archive", "Templates"]);
+  });
+
+  test("clamps invalid maxRecentFiles", () => {
+    expect(
+      normalizeLoadedSettings({ maxRecentFiles: Number.NaN }, identity)
+        .maxRecentFiles,
+    ).toBe(25);
+    expect(
+      normalizeLoadedSettings({ maxRecentFiles: -3 }, identity).maxRecentFiles,
+    ).toBe(1);
+    expect(
+      normalizeLoadedSettings({ maxRecentFiles: 9999 }, identity)
+        .maxRecentFiles,
+    ).toBe(500);
+  });
+
+  test("trims the changelog heading", () => {
+    const settings = normalizeLoadedSettings(
+      { changelogHeading: "  # Changelog \n" },
+      identity,
+    );
+    expect(settings.changelogHeading).toBe("# Changelog");
   });
 });

@@ -9,10 +9,10 @@ import {
 
 import {
   type ChangelogSettings,
-  clampMaxRecentFiles,
   DEFAULT_SETTINGS,
   filterAndSort,
   generateChangelog,
+  normalizeLoadedSettings,
 } from "./changelog";
 import { ChangelogSettingsTab } from "./settings";
 
@@ -88,26 +88,9 @@ export default class ChangelogPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    const loadedSettings = (await this.loadData()) ?? {};
-    const knownKeys = new Set(Object.keys(DEFAULT_SETTINGS));
-    const filtered: Record<string, unknown> = {};
-    for (const key of Object.keys(loadedSettings)) {
-      if (knownKeys.has(key)) {
-        filtered[key] = loadedSettings[key];
-      }
-    }
-    this.settings = {
-      ...DEFAULT_SETTINGS,
-      ...(filtered as Partial<ChangelogSettings>),
-    };
-
-    // Normalize persisted folder paths so duplicate detection in the
-    // settings UI (which also runs normalizePath) stays consistent.
-    this.settings.changelogPath = normalizePath(this.settings.changelogPath);
-    this.settings.excludedFolders =
-      this.settings.excludedFolders.map(normalizePath);
-    this.settings.maxRecentFiles = clampMaxRecentFiles(
-      this.settings.maxRecentFiles,
+    this.settings = normalizeLoadedSettings(
+      await this.loadData(),
+      normalizePath,
     );
   }
 

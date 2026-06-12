@@ -31,6 +31,37 @@ export function clampMaxRecentFiles(value: unknown): number {
   return Math.max(1, Math.min(Math.floor(raw), MAX_RECENT_FILES));
 }
 
+/**
+ * Turn persisted data into valid settings: drop unknown keys (so renamed
+ * or removed settings don't linger), normalize folder paths so duplicate
+ * detection in the settings UI stays consistent, clamp maxRecentFiles,
+ * and trim the heading so generateChangelog's "\n\n" spacing stays
+ * predictable. `normalize` is injected (Obsidian's normalizePath in
+ * production) to keep this module Obsidian-free.
+ */
+export function normalizeLoadedSettings(
+  raw: unknown,
+  normalize: (path: string) => string,
+): ChangelogSettings {
+  const loaded = (raw ?? {}) as Record<string, unknown>;
+  const knownKeys = new Set(Object.keys(DEFAULT_SETTINGS));
+  const filtered: Record<string, unknown> = {};
+  for (const key of Object.keys(loaded)) {
+    if (knownKeys.has(key)) {
+      filtered[key] = loaded[key];
+    }
+  }
+  const settings: ChangelogSettings = {
+    ...DEFAULT_SETTINGS,
+    ...(filtered as Partial<ChangelogSettings>),
+  };
+  settings.changelogPath = normalize(settings.changelogPath);
+  settings.excludedFolders = settings.excludedFolders.map(normalize);
+  settings.maxRecentFiles = clampMaxRecentFiles(settings.maxRecentFiles);
+  settings.changelogHeading = settings.changelogHeading.trim();
+  return settings;
+}
+
 interface ChangelogFile {
   path: string;
   basename: string;

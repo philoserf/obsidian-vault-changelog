@@ -189,14 +189,14 @@ export class ChangelogSettingsTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Changelog heading")
       .setDesc(
-        "Optional heading to prepend to the changelog (e.g., # Changelog). Leave empty for no heading.",
+        "Optional heading to prepend to the changelog, written literally (e.g., # Changelog). Leave empty for no heading.",
       )
       .addText((text) =>
         text
           .setPlaceholder("# Changelog")
           .setValue(settings.changelogHeading)
           .onChange((value) => {
-            settings.changelogHeading = value;
+            settings.changelogHeading = value.trim();
             this.plugin.saveSettingsSafely();
           }),
       );
