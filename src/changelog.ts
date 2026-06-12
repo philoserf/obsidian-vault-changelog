@@ -20,6 +20,17 @@ export const DEFAULT_SETTINGS: ChangelogSettings = {
 
 export const MAX_RECENT_FILES = 500;
 
+/**
+ * The one authoritative clamping rule for maxRecentFiles: floor to an
+ * integer and clamp to [1, MAX_RECENT_FILES]; non-finite input falls back
+ * to the default. Load-time and the settings UI both call this.
+ */
+export function clampMaxRecentFiles(value: unknown): number {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return DEFAULT_SETTINGS.maxRecentFiles;
+  return Math.max(1, Math.min(Math.floor(raw), MAX_RECENT_FILES));
+}
+
 interface ChangelogFile {
   path: string;
   basename: string;

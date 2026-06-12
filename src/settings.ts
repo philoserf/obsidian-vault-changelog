@@ -7,7 +7,11 @@ import {
   Setting,
 } from "obsidian";
 
-import { DEFAULT_SETTINGS, MAX_RECENT_FILES } from "./changelog";
+import {
+  clampMaxRecentFiles,
+  DEFAULT_SETTINGS,
+  MAX_RECENT_FILES,
+} from "./changelog";
 import type ChangelogPlugin from "./main";
 
 class PathSuggest extends AbstractInputSuggest<string> {
@@ -165,7 +169,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
             );
             return;
           }
-          const flooredValue = Math.min(Math.floor(numValue), MAX_RECENT_FILES);
+          const flooredValue = clampMaxRecentFiles(numValue);
           settings.maxRecentFiles = flooredValue;
           text.setValue(flooredValue.toString());
           this.plugin.saveSettingsSafely();

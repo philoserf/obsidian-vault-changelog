@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import moment from "moment";
 
-import { filterAndSort, generateChangelog } from "./changelog";
+import {
+  clampMaxRecentFiles,
+  filterAndSort,
+  generateChangelog,
+} from "./changelog";
 
 const formatter = (mtime: number, fmt: string) => moment(mtime).format(fmt);
 
@@ -127,5 +131,38 @@ describe("generateChangelog", () => {
       formatter,
     );
     expect(result).toBe("");
+  });
+});
+
+describe("clampMaxRecentFiles", () => {
+  test("returns a valid in-range integer as-is", () => {
+    expect(clampMaxRecentFiles(25)).toBe(25);
+    expect(clampMaxRecentFiles(1)).toBe(1);
+    expect(clampMaxRecentFiles(500)).toBe(500);
+  });
+
+  test("floors floats", () => {
+    expect(clampMaxRecentFiles(25.9)).toBe(25);
+  });
+
+  test("clamps below 1 to 1", () => {
+    expect(clampMaxRecentFiles(0)).toBe(1);
+    expect(clampMaxRecentFiles(-5)).toBe(1);
+    expect(clampMaxRecentFiles(0.4)).toBe(1);
+  });
+
+  test("clamps above the maximum", () => {
+    expect(clampMaxRecentFiles(1000)).toBe(500);
+  });
+
+  test("accepts numeric strings", () => {
+    expect(clampMaxRecentFiles("42")).toBe(42);
+  });
+
+  test("falls back to the default for non-finite input", () => {
+    expect(clampMaxRecentFiles(Number.NaN)).toBe(25);
+    expect(clampMaxRecentFiles("abc")).toBe(25);
+    expect(clampMaxRecentFiles(Number.POSITIVE_INFINITY)).toBe(25);
+    expect(clampMaxRecentFiles(undefined)).toBe(25);
   });
 });

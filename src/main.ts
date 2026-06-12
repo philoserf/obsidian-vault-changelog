@@ -9,10 +9,10 @@ import {
 
 import {
   type ChangelogSettings,
+  clampMaxRecentFiles,
   DEFAULT_SETTINGS,
   filterAndSort,
   generateChangelog,
-  MAX_RECENT_FILES,
 } from "./changelog";
 import { ChangelogSettingsTab } from "./settings";
 
@@ -106,10 +106,9 @@ export default class ChangelogPlugin extends Plugin {
     this.settings.changelogPath = normalizePath(this.settings.changelogPath);
     this.settings.excludedFolders =
       this.settings.excludedFolders.map(normalizePath);
-    const raw = Number(this.settings.maxRecentFiles);
-    this.settings.maxRecentFiles = Number.isFinite(raw)
-      ? Math.max(1, Math.min(Math.floor(raw), MAX_RECENT_FILES))
-      : DEFAULT_SETTINGS.maxRecentFiles;
+    this.settings.maxRecentFiles = clampMaxRecentFiles(
+      this.settings.maxRecentFiles,
+    );
   }
 
   onunload(): void {}
