@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Obsidian plugin that maintains a changelog of recently edited notes. The changelog file is **fully overwritten** on every update — no history is preserved.
 
+The current next step for this repo is tracked in the workspace backlog at `../NEXT.md` (the `obsidian-vault-changelog` row). Read it when starting work; update it when that step ships.
+
 ## Development Commands
 
 ```bash
@@ -26,13 +28,13 @@ bun run deploy           # Copy main.js/manifest.json/styles.css into the local 
 
 The plugin has an intentional split between pure logic and Obsidian integration:
 
-- `src/changelog.ts` — **pure functions** (`filterAndSort`, `generateChangelog`) with no Obsidian imports. All unit tests target this file. Accepts a `TimeFormatter` callback so tests don't need `window.moment`.
+- `src/changelog.ts` — **pure functions** (`filterAndSort`, `generateChangelog`, `normalizeLoadedSettings`, `clampMaxRecentFiles`, `isValidChangelogPath`, `validateExcludedFolder`) with no Obsidian imports. All unit tests target this file. Accepts a `TimeFormatter` callback so tests don't need `window.moment`; `normalizeLoadedSettings` takes an injected path normalizer for the same reason.
 - `src/main.ts` — `ChangelogPlugin` extends `Plugin`. Wires up the command, vault event handlers (`modify`/`delete`/`rename`), and I/O. Auto-update uses a 200ms `debounce` and skips edits to the changelog file itself (avoids self-triggering loops).
 - `src/settings.ts` — `ChangelogSettingsTab` + `PathSuggest`. Path suggestions cache vault folder listings to avoid per-keystroke scanning.
 
 ### Settings persistence quirks
 
-`loadSettings` in `main.ts` strips unknown keys from persisted data (so renamed/removed settings don't linger), then `normalizePath`s `changelogPath` and every `excludedFolders` entry. `maxRecentFiles` is clamped to `[1, MAX_RECENT_FILES=500]`. Keep these invariants when adding new settings.
+`normalizeLoadedSettings` in `changelog.ts` (called from `main.loadSettings`) strips unknown keys from persisted data (so renamed/removed settings don't linger), `normalizePath`s `changelogPath` and every `excludedFolders` entry, clamps `maxRecentFiles` to `[1, MAX_RECENT_FILES=500]` via `clampMaxRecentFiles`, and trims `changelogHeading`. Keep these invariants when adding new settings.
 
 ### Writing the changelog
 
