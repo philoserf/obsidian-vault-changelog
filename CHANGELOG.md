@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.5.4
+
+### Fixed
+
+- Malformed persisted settings (hand-edited or corrupt `data.json`) no longer crash plugin load; known settings keys fall back to defaults when their runtime type doesn't match (#174)
+- "Max recent files" now validates on blur instead of on every keystroke, so clearing the field to retype no longer reverts mid-edit (#175)
+
+### Added
+
+- Accessible label on the excluded-folder remove button (#176)
+
+### Internal
+
+- Bump devDependencies: @biomejs/biome 2.5.2, @types/node 26.1.0
+
 ## 1.5.3
 
 ### Fixed
