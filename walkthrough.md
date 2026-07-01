@@ -27,7 +27,7 @@ cat manifest.json
 {
   "id": "obsidian-vault-changelog",
   "name": "Vault Changelog",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "minAppVersion": "1.6.6",
   "description": "Maintain a changelog of recently edited notes.",
   "author": "Mark Ayers (originally by Badr Bouslikhin)",
