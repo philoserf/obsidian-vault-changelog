@@ -33,11 +33,13 @@ export function clampMaxRecentFiles(value: unknown): number {
 
 /**
  * Turn persisted data into valid settings: drop unknown keys (so renamed
- * or removed settings don't linger), normalize folder paths so duplicate
- * detection in the settings UI stays consistent, clamp maxRecentFiles,
- * and trim the heading so generateChangelog's "\n\n" spacing stays
- * predictable. `normalize` is injected (Obsidian's normalizePath in
- * production) to keep this module Obsidian-free.
+ * or removed settings don't linger), fall back to defaults for known keys
+ * whose runtime type doesn't match (guards against hand-edited or corrupt
+ * data.json), normalize folder paths so duplicate detection in the
+ * settings UI stays consistent, clamp maxRecentFiles, and trim the
+ * heading so generateChangelog's "\n\n" spacing stays predictable.
+ * `normalize` is injected (Obsidian's normalizePath in production) to
+ * keep this module Obsidian-free.
  */
 export function normalizeLoadedSettings(
   raw: unknown,
@@ -55,6 +57,24 @@ export function normalizeLoadedSettings(
     ...DEFAULT_SETTINGS,
     ...(filtered as Partial<ChangelogSettings>),
   };
+  for (const key of [
+    "changelogPath",
+    "changelogHeading",
+    "datetimeFormat",
+  ] as const) {
+    if (typeof settings[key] !== "string")
+      settings[key] = DEFAULT_SETTINGS[key];
+  }
+  for (const key of ["autoUpdate", "useWikiLinks"] as const) {
+    if (typeof settings[key] !== "boolean")
+      settings[key] = DEFAULT_SETTINGS[key];
+  }
+  if (
+    !Array.isArray(settings.excludedFolders) ||
+    !settings.excludedFolders.every((folder) => typeof folder === "string")
+  ) {
+    settings.excludedFolders = DEFAULT_SETTINGS.excludedFolders;
+  }
   settings.changelogPath = normalize(settings.changelogPath);
   settings.excludedFolders = settings.excludedFolders.map(normalize);
   settings.maxRecentFiles = clampMaxRecentFiles(settings.maxRecentFiles);

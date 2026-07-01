@@ -81,6 +81,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       const removeButton = folderDiv.createEl("button", {
         text: "✕",
         cls: "excluded-folder-remove",
+        attr: { "aria-label": "Remove excluded folder" },
       });
 
       removeButton.addEventListener("click", () => {
@@ -161,9 +162,11 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       .setDesc(
         `Maximum number of recently edited files to include (1\u2013${MAX_RECENT_FILES})`,
       )
-      .addText((text) =>
-        text.setValue(settings.maxRecentFiles.toString()).onChange((value) => {
-          const numValue = Number(value);
+      .addText((text) => {
+        text.setValue(settings.maxRecentFiles.toString());
+
+        text.inputEl.addEventListener("blur", () => {
+          const numValue = Number(text.getValue());
           if (Number.isNaN(numValue) || numValue < 1) {
             text.setValue(settings.maxRecentFiles.toString());
             new Notice(
@@ -175,8 +178,8 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           settings.maxRecentFiles = flooredValue;
           text.setValue(flooredValue.toString());
           this.plugin.saveSettingsSafely();
-        }),
-      );
+        });
+      });
 
     new Setting(containerEl)
       .setName("Use wiki-links")
