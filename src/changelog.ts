@@ -65,6 +65,10 @@ export function normalizeLoadedSettings(
     if (typeof settings[key] !== "string")
       settings[key] = DEFAULT_SETTINGS[key];
   }
+  for (const key of ["autoUpdate", "useWikiLinks"] as const) {
+    if (typeof settings[key] !== "boolean")
+      settings[key] = DEFAULT_SETTINGS[key];
+  }
   if (
     !Array.isArray(settings.excludedFolders) ||
     !settings.excludedFolders.every((folder) => typeof folder === "string")

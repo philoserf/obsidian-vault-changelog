@@ -248,12 +248,21 @@ describe("normalizeLoadedSettings", () => {
     expect(settings.datetimeFormat).toBe(DEFAULT_SETTINGS.datetimeFormat);
   });
 
-  test("falls back excludedFolders when it contains non-string entries", () => {
+  test("falls back for excludedFolders when it contains non-string entries", () => {
     const settings = normalizeLoadedSettings(
       { excludedFolders: ["Archive/", 42] },
       identity,
     );
     expect(settings.excludedFolders).toEqual(DEFAULT_SETTINGS.excludedFolders);
+  });
+
+  test("falls back to defaults when boolean keys have the wrong type", () => {
+    const settings = normalizeLoadedSettings(
+      { autoUpdate: "false", useWikiLinks: "true" },
+      identity,
+    );
+    expect(settings.autoUpdate).toBe(DEFAULT_SETTINGS.autoUpdate);
+    expect(settings.useWikiLinks).toBe(DEFAULT_SETTINGS.useWikiLinks);
   });
 });
 
