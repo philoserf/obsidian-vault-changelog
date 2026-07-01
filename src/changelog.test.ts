@@ -231,6 +231,30 @@ describe("normalizeLoadedSettings", () => {
     );
     expect(settings.changelogHeading).toBe("# Changelog");
   });
+
+  test("falls back to defaults when known keys have the wrong type", () => {
+    const settings = normalizeLoadedSettings(
+      {
+        changelogPath: 42,
+        excludedFolders: null,
+        changelogHeading: 42,
+        datetimeFormat: 42,
+      },
+      identity,
+    );
+    expect(settings.changelogPath).toBe(DEFAULT_SETTINGS.changelogPath);
+    expect(settings.excludedFolders).toEqual(DEFAULT_SETTINGS.excludedFolders);
+    expect(settings.changelogHeading).toBe(DEFAULT_SETTINGS.changelogHeading);
+    expect(settings.datetimeFormat).toBe(DEFAULT_SETTINGS.datetimeFormat);
+  });
+
+  test("falls back excludedFolders when it contains non-string entries", () => {
+    const settings = normalizeLoadedSettings(
+      { excludedFolders: ["Archive/", 42] },
+      identity,
+    );
+    expect(settings.excludedFolders).toEqual(DEFAULT_SETTINGS.excludedFolders);
+  });
 });
 
 describe("isValidChangelogPath", () => {
