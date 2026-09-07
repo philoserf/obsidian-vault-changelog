@@ -48,14 +48,7 @@ The plugin has an intentional split between pure logic and Obsidian integration:
 
 ## Release Process
 
-Always merge PRs before tagging. Tags must point to the merged commit on `main`:
-
-```bash
-git tag -a 1.0.0 -m "Release 1.0.0"
-git push origin 1.0.0
-```
-
-The GitHub Actions release workflow builds and publishes the release.
+Use the `obsidian-release-gate` then `obsidian-release-ship` skills — do not tag by hand.
 
 ## Code Style
 
