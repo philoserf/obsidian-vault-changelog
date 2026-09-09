@@ -1,53 +1,236 @@
-# A Theory of obsidian-vault-changelog
+# Theory
 
-## What the system is for
+For the engineer inheriting this plugin. This is not a tour of the files; it is the set of
+ideas you need to hold in mind so that a change you make does not quietly break something the
+code assumes but never states.
 
-This plugin answers a single question for an Obsidian user: _what have I touched recently?_ It maintains a single markdown file—the changelog—that lists the vault's most recently modified notes, sorted newest-first, with timestamps. The file is regenerated from scratch on every relevant vault event; it is never appended to. There is no history, no diffing, no journaling. The changelog is a materialized view of filesystem modification times, nothing more.
+## The one idea everything else hangs from
 
-The core entities are **vault files** (which have paths, basenames, and modification timestamps), a **changelog file** (which is both output artifact and member of the vault that must be excluded from its own listing), **excluded folders** (a user-maintained deny-list), and **settings** (the configuration that governs generation). The relationships are simple: files are filtered by exclusion rules, sorted by mtime, truncated to a maximum count, and rendered into a line-per-file markdown format.
+The name is a lie the codebase maintains on purpose, and understanding that is most of the
+theory.
 
-## The organizing ideas
+There is no log here. Nothing accumulates. `generateChangelog` is a pure function of the
+vault's current state — take every markdown file, sort by `stat.mtime` descending, keep the
+first _n_, render one line each. Run it twice against an unchanged vault and you get the same
+string, byte for byte. Nothing about the previous run is consulted, and nothing about the
+current run is remembered.
 
-The load-bearing architectural decision was made in v1.3.0: extract all pure logic into `changelog.ts`, which imports nothing from Obsidian. This creates a hard boundary between the Obsidian-coupled code (plugin lifecycle in `main.ts`, settings UI in `settings.ts`) and the testable core (`filterAndSort`, `generateChangelog`). The tests exercise only the pure side. This is not merely conventional separation—it is the reason the project can have tests at all, because the Obsidian API is hostile to unit testing (it requires a running app instance, DOM, and vault).
+So the file at `changelogPath` is **cache, not data**. It is a materialized view of a query
+whose source of truth is the vault's own filesystem metadata, and it can be thrown away and
+regenerated at any moment at no cost. Once you see the file that way, nearly every decision in
+this codebase stops looking like a shortcut and starts looking like the obvious consequence:
 
-The `TimeFormatter` type injection in `generateChangelog` is a deliberate seam. The plugin passes `window.moment` at the call site; tests pass the `moment` npm package directly. This was an explicit refactor (commit 9ec35ef, PR #131) to remove the implicit dependency on a global. It is the only place where the code negotiates between the Obsidian runtime environment and a test environment.
+- `writeToFile` calls `vault.modify` with the whole rendered string. There is no merge, no
+  append, no plugin-managed region between markers. Overwriting is not vandalism when the
+  thing being overwritten is derived.
+- There is no locking and no ordering discipline between the command path and the vault-event
+  path. Two overlapping updates can only race to write the same answer.
+- Failure is cheap enough to swallow. Look at the `catch` blocks in `main.ts` — they raise a
+  `Notice` and return. Nothing retries, because the next vault event regenerates everything
+  anyway. A dropped update is a stale cache, not lost work.
+- `writeToFile`'s TOCTOU handling (`main.ts:72-88`) is tolerant rather than careful: if
+  `vault.create` throws, it assumes a concurrent event won the race, re-fetches by path, and
+  proceeds. That is only safe because whoever won was going to write the same content.
 
-The `ChangelogFile` interface in `changelog.ts` is a structural type with exactly three fields: `path`, `basename`, `stat.mtime`. It is not `TFile`—it is the minimal projection of `TFile` that the pure functions need. Obsidian's `TFile` satisfies it structurally, so no adapter is required. This is the central abstraction, and it is almost invisible: a three-field interface that makes the entire test story possible.
+The README says the quiet part out loud for users — "the changelog note is entirely overwritten
+on each update" — and that sentence is the user-facing shadow of this theory.
 
-Settings are loaded with a defensive posture that reflects real-world experience with corrupt or stale persisted data. `loadSettings` strips unknown keys (protecting against schema drift between versions), normalizes paths (so that comparisons elsewhere can assume canonical form), and clamps `maxRecentFiles` with `Number.isFinite` (guarding against `NaN` from corrupted JSON). The `MAX_RECENT_FILES` cap of 500 exists to prevent performance degradation in large vaults—it is a product decision, not a technical limit.
+The corollary is the sharpest thing to know about this plugin: **any requirement that asks the
+changelog to remember something is not a feature request, it is a request to discard the
+theory.** Appending rather than replacing, recording deletions, diffing against the last run,
+grouping entries by day across runs — none of those are additions to the current design. Each
+one turns the file from cache into data, and once it is data, the overwrite has to go, the
+races start to matter, and the swallowed errors become bugs. If that requirement ever arrives,
+budget for a rewrite of `main.ts`, not a patch.
+
+## The pure core and the shell around it
+
+`src/changelog.ts` imports nothing from `obsidian`. That is not incidental tidiness; it is an
+enforced boundary, and two injection points exist solely to hold it.
+
+The first is `TimeFormatter`. `generateChangelog` takes a `(mtime, format) => string` callback
+rather than reaching for moment itself. In production `main.ts` passes
+`(mtime, fmt) => window.moment(mtime).format(fmt)` — Obsidian's globally-installed moment, so
+nothing is bundled. In tests, `changelog.test.ts` passes the npm `moment` package, which is why
+`moment` appears in `devDependencies` and never in the shipped bundle. Same behavior, two
+different moments, and the pure layer knows about neither.
+
+The second is `normalize`. `normalizeLoadedSettings` takes a path normalizer as an argument
+instead of importing Obsidian's `normalizePath`. Tests pass `identity`, or a small stub, and
+can therefore assert normalization is _called_ on the right fields without needing Obsidian's
+implementation.
+
+The third boundary is quieter and easy to break by accident. `filterAndSort` and
+`generateChangelog` accept `ChangelogFile[]`:
+
+```ts
+interface ChangelogFile {
+  path: string;
+  basename: string;
+  stat: { mtime: number };
+}
+```
+
+That is the narrowest structural subset of Obsidian's `TFile` the functions actually touch. A
+real `TFile` satisfies it, so `main.ts` passes `getMarkdownFiles()` straight through with no
+adapter; a three-field object literal in a test satisfies it too. The temptation, when you need
+one more property, is to widen this to `TFile` — that single edit would drag `obsidian` into
+the pure module and collapse the whole arrangement. Add the field to `ChangelogFile` instead.
+
+`src/settings.ts` and `src/main.ts` are the shell. Everything Obsidian-shaped lives there:
+`Plugin` lifecycle, vault event registration, `PluginSettingTab`, `AbstractInputSuggest`,
+`Notice`, `debounce`. The shell is meant to hold no decisions, only wiring. Where it currently
+holds one — see the `duplicate` verdict finding below — that is drift, not design.
+
+## The invariants
+
+Five things must stay true. Two are enforced, three are not, and knowing which is which is the
+difference between a safe change and a damaging one.
+
+**Settings are valid the moment they are loaded, and `normalizeLoadedSettings` is the only
+gate.** It is deliberately paranoid about `data.json`, which a user can hand-edit and a failed
+write can truncate. It drops keys it does not recognize, so a setting you rename does not leave
+its predecessor lying around forever. It replaces any known key whose runtime type is wrong with
+the default — that is the `typeof` sweep over the string keys, then the boolean keys, then the
+`every` check on `excludedFolders`, which throws away the whole array if a single element is not
+a string. Then it normalizes paths, clamps, and trims. **When you add a setting, you must add it
+to `DEFAULT_SETTINGS` _and_ to the matching type-guard loop.** Adding only the first compiles,
+passes the tests, and silently ships a setting that a corrupt `data.json` can turn into
+`undefined` at runtime. This is the most likely way to damage the system while believing you
+followed the pattern.
+
+**`clampMaxRecentFiles` is the single clamping authority.** Load-time calls it; the settings UI
+calls it. Its comment says so. The reason is that the two paths previously disagreed about
+floats and about the upper bound, and reconciling them is what 1.5.3 was for. Do not
+re-implement the rule at a third call site.
+
+**The changelog never triggers its own regeneration.** The vault-event handler
+(`main.ts:41-49`) checks three things before touching the debouncer: auto-update is on, the
+subject is a `TFile`, and its path is not `changelogPath`. That third check is the loop
+breaker — `vault.modify` on the changelog fires a `modify` event, and without the guard the
+plugin would rewrite the file in response to having rewritten the file. The guards sit
+_before_ the debounce rather than inside the callback, which was a deliberate move (1.4.0,
+#133): put them after, and the debouncer's pending state gets set by events that should have
+been ignored.
+
+**The committed `main.js` matches a fresh build of `src/`.** This one is enforced, and it is
+worth knowing how, because it looks like sloppiness if you do not. Obsidian ships the committed
+bundle, so `main.js` is a tracked build artifact rather than build output. CI runs
+`bun run build` then `git diff --exit-code main.js`, which fails the PR if the two diverge. The
+workflow comment notes that `bun` is deliberately left unpinned so that a bundler-output change
+trips the same wire. I rebuilt from source while writing this and the output was byte-identical
+to the committed file.
+
+**The file at `changelogPath` belongs to the plugin.** This one is not enforced at all, and it
+is the load-bearing assumption that the overwrite rests on. `isValidChangelogPath` checks only
+that the path ends in `.md`, which every note in the vault does — and `PathSuggest` cheerfully
+offers every one of them as a completion. See the high-severity finding below.
+
+## Vocabulary worth learning before you touch it
+
+**Excluded folders are stored without a trailing slash and matched with one.** This looks like
+a bug the first time you read `filterAndSort`:
+
+```ts
+file.path.startsWith(folder.endsWith("/") ? folder : `${folder}/`);
+```
+
+Both halves of that ternary are live. `normalizePath` strips trailing slashes, so anything
+saved through the settings UI arrives as `Archive`; but the setting predates that normalization,
+so a long-lived `data.json` can still hold `Archive/`. The slash is re-added at match time
+rather than at save time because the alternative — a migration — would have to run against
+persisted user data. And the slash matters: without it, excluding `Notes` would also exclude
+`Notes2/` and `Notebook/`. There is a test for exactly that (`does not exclude folders that
+share a prefix`), which is the tell that someone was burned by it (1.3.0, #101).
+
+**`ChangelogSettings.changelogHeading` is written literally, and trimmed at both boundaries.**
+`generateChangelog` emits `heading + "\n\n"` when it is non-empty and nothing at all when it is.
+That two-newline spacing is only predictable if the heading carries no leading or trailing
+whitespace, which is why it is trimmed on load _and_ on change. The comment on
+`normalizeLoadedSettings` names this dependency explicitly.
+
+**"Verdict" means a three-valued answer, not a boolean.** `ExcludedFolderVerdict` is
+`"ok" | "invalid" | "duplicate"` because the UI is supposed to say something different about
+each. Today it does not.
 
 ## The seams
 
-**Plugin ↔ Obsidian API.** The plugin extends `Plugin`, registers events via `this.registerEvent`, and uses `this.app.vault` for file operations. These are the points where Obsidian owns the lifecycle. The event handler in `onload` is the system's single entry point for reactive behavior: it listens on modify, delete, and rename, guards against the changelog triggering itself (the `file.path !== this.settings.changelogPath` check), and debounces at 200ms. The debounce is critical—without it, a burst of saves would cause a cascade of full regenerations.
+The Obsidian API is the widest one, and the plugin sits on more of it than its size suggests:
+`vault.getMarkdownFiles`, `getAllFolders`, `getFiles`, `getAbstractFileByPath`, `create`,
+`modify`, the `modify`/`delete`/`rename` events, `normalizePath`, `debounce`, `Notice`,
+`PluginSettingTab`, `AbstractInputSuggest`, and the ambient `window.moment`. Note that
+`obsidian@1.13.1` is a types-only package — there is no JavaScript in `node_modules/obsidian`.
+Nothing in this repository can execute an Obsidian function, which is why the test suite covers
+`changelog.ts` completely and `main.ts` and `settings.ts` not at all. That is not a coverage
+gap someone forgot to fill; it is the boundary the pure/shell split was drawn to create. The
+shell is untested by construction, which is the argument for keeping it as thin as it is.
 
-**Pure logic ↔ Plugin.** `changelog.ts` exports types, constants, and two functions. It has zero imports from `obsidian`. This boundary is principled and load-bearing. If someone adds an Obsidian import to `changelog.ts`, the test story breaks.
+`data.json`, written by `saveData` and read by `loadData`, is the persistence seam, and it is
+treated as hostile input — see the invariant above.
 
-**Settings UI ↔ Plugin.** `settings.ts` reaches back into the plugin via `this.plugin.settings` and `this.plugin.saveSettings()`. The settings tab mutates the plugin's settings object in place and then persists. There is no intermediate model, no validation layer between UI and state—the UI _is_ the validation layer. The `PathSuggest` class caches vault paths on first access to avoid scanning the vault on every keystroke, a fix from commit b50d8d5 that addressed a real performance problem.
+The release seam is a triple that must move together: `package.json` version,
+`manifest.json` version, and a `versions.json` entry mapping the new version to the current
+`minAppVersion`. `version-bump.ts` writes the latter two from the first, and reads
+`minAppVersion` out of the manifest _before_ overwriting the version field, which is the only
+subtle thing in that script. `CLAUDE.md` directs you to the release-gate and release-ship
+skills rather than tagging by hand.
 
-**Build ↔ Runtime.** The build produces a single `main.js` (CJS, minified) that Obsidian loads directly. The `obsidian` and `electron` packages are externalized—Obsidian provides them at runtime. This is standard for Obsidian plugins, but it means the build output is not self-contained and cannot be tested outside the Obsidian host.
+`deploy.ts` is a local convenience, not part of the pipeline: it copies the three shipped files
+into whatever `OBSIDIAN_DEPLOY_DEST` names, from the gitignored `.env.local`.
 
-**Release.** The GitHub Actions release workflow is triggered by pushing a semver tag (not a `v`-prefixed tag—the regex is `[0-9]+.[0-9]+.[0-9]+`). It runs tests and build, then creates a GitHub release with three artifacts (`main.js`, `styles.css`, `manifest.json`). The `versions.json` file maps plugin versions to minimum Obsidian versions, which is how Obsidian's plugin update system knows compatibility. The `version-bump.ts` script keeps `manifest.json` and `versions.json` in sync with `package.json`—it reads the version from `npm_package_version`, so it must be run via `bun run version`.
+## Where the theory is thin
 
-**Deploy.** The `deploy` script in `package.json` is a raw `cp` into the author's own Obsidian vault's plugin directory. This is a local development convenience, not a deployment pipeline. It is the only place the path to the author's vault appears.
+Two boundaries here are historical rather than principled, and it is worth not mistaking them
+for design.
 
-## What changes the system accommodates
+`PathSuggest` serves both the changelog-path field and the excluded-folder field from a single
+list containing every folder (slash-suffixed) and every markdown file. One field wants folders,
+the other wants a file, and neither gets a filtered list. The shared suggester is convenient
+and is also the mechanism by which a user can autocomplete their way into overwriting a real
+note.
 
-**Easy changes:** Adding a new setting follows an established pattern—add a field to `ChangelogSettings`, a default to `DEFAULT_SETTINGS`, a UI control in `settings.ts`, and consume it wherever relevant. The recent history shows several of these (wiki-links, heading, max files). Adding new output format options (grouping by date, different list styles) would be straightforward modifications to `generateChangelog`. New exclusion criteria (by tag, by frontmatter property) would be additions to `filterAndSort`.
+The suggester's `cachedPaths` is populated on first use and never invalidated. Because
+`display()` rebuilds the tab's DOM and constructs fresh suggesters each time the settings tab
+opens, the cache is effectively per-visit — stale only for files created while the tab sits
+open. That is a deliberate trade (1.5.0: "cache vault paths to avoid per-keystroke scanning"),
+not an oversight, but it is undocumented and looks like a leak.
 
-**Moderate changes:** Supporting multiple changelogs, or changelogs scoped to folders, would require rethinking the single-path assumption that pervades the code. The self-exclusion guard, the settings schema, and the file-write path all assume one changelog.
+`onunload()` is an empty method. Every event is registered through `registerEvent`, so Obsidian
+tears them down; the debouncer's pending timer is not cancelled, but its callback checks
+`this.settings.autoUpdate` on a plugin instance that is going away, and the worst case is one
+orphaned write. The method exists because a plugin-checker warning asked for it (1.5.0), which
+means it is ceremony rather than cleanup.
 
-**Hard changes:** Making the changelog incremental (append-only, or diff-based) rather than full-regeneration would be a fundamental redesign. The current architecture has no concept of prior state—it reads all files, sorts them, and writes the result. There is no diffing, no event log, no stored previous output. Similarly, adding real-time collaboration awareness or conflict resolution would require engaging with parts of the Obsidian API that the plugin currently ignores entirely.
+## Uncertainties
 
-**Where to look first:** A maintainer who understood the theory would start in `changelog.ts` for any logic change and `settings.ts` for any UI change, knowing that `main.ts` is glue that should rarely change. A maintainer who didn't might add Obsidian API calls into `changelog.ts` (breaking testability), or duplicate validation logic between `loadSettings` and the settings UI (the code already has mild tension here—see below).
+Where I inferred intent from code and could be wrong:
 
-## Tensions and uncertainties
+- **`normalizePath`'s empty-string return.** The obsidian package ships no implementation, so I
+  could not execute it. The `validateExcludedFolder` finding below turns on whether an empty
+  input normalizes to `""`, `"."`, or `"/"`. The structural complaint holds under any of them;
+  the severity does not.
+- **`debounce`'s `resetTimer` default.** Same limitation. I read the optional third parameter
+  off the type declaration and Obsidian's published docs, not off a running implementation.
+- **Whether the `duplicate` verdict was ever wired up.** The type, the function, and the test
+  all exist; only the UI arm is missing. I read that as an unfinished intention rather than a
+  decision to ignore duplicates silently, but the git history does not settle it.
+- **Whether `maxRecentFiles`' asymmetric UI validation is intentional.** Values below 1 are
+  rejected with a `Notice`; values above 500 are silently clamped, despite the `Notice` text
+  promising a range. Plausibly deliberate — clamping down is harmless, clamping up would hide
+  a typo — but nothing says so.
+- **Coverage.** I read every source file, the tests, both CI workflows, the build and release
+  scripts, and the full `CHANGELOG.md`. I did not run the plugin inside Obsidian, so every
+  claim about runtime behavior at the Obsidian seam is inferred from the API declarations.
 
-**Validation is split.** `loadSettings` clamps `maxRecentFiles` and normalizes paths on load. The settings UI _also_ validates `maxRecentFiles` (rejecting `NaN`, flooring floats, capping at `MAX_RECENT_FILES`) and rejects non-`.md` changelog paths. These two validation sites are not identical in behavior—`loadSettings` uses `Number.isFinite` while the UI uses `Number.isNaN`, and `loadSettings` accepts and clamps values the UI would reject outright. This isn't a bug, but it is a place where two defenses serve overlapping purposes with subtly different semantics. The load-time validation is defending against corrupted stored data; the UI validation is defending against user input. They evolved separately (the load-time guards were added in response to specific bug reports: #132 for NaN, stale-key stripping in 530743d).
+## Index
 
-**The changelog file's dual identity.** The changelog is both an output artifact and a file in the vault. This creates a self-triggering problem: modifying the changelog fires a vault event, which could trigger another changelog update. The guard `file.path !== this.settings.changelogPath` prevents this, but it relies on exact path equality. Since both the event's `file.path` and `this.settings.changelogPath` go through Obsidian's `normalizePath`, this should hold, but it is a correctness invariant that is not tested (because testing it would require the Obsidian runtime). The TOCTOU race handling in `writeToFile` (the catch-and-retry around `vault.create`) is another artifact of this dual identity—the changelog file might be created by a concurrent event between the existence check and the create call.
+| #   | Severity | Issue                                                     | Primary location                              |
+| --- | -------- | --------------------------------------------------------- | --------------------------------------------- |
+| 1   | high     | `changelog-path-may-target-any-existing-note`             | `src/changelog.ts:86-88`, `src/main.ts:72-88` |
+| 2   | medium   | `duplicate-excluded-folder-verdict-is-silently-discarded` | `src/settings.ts:224-244`                     |
+| 3   | medium   | `excluded-folder-guard-is-written-for-unnormalized-input` | `src/changelog.ts:97-104`                     |
+| 4   | medium   | `test-files-are-excluded-from-typechecking`               | `tsconfig.json:11`                            |
+| 5   | low      | `readme-names-a-command-the-palette-does-not-show`        | `README.md`, `src/main.ts:31-39`              |
+| 6   | low      | `debounce-is-called-without-resettimer`                   | `src/main.ts:21-25`, `CLAUDE.md`              |
 
-**Test coverage has a deliberate gap.** The open issue #147 notes the absence of tests for `settings.ts` and `main.ts`. This is not an oversight but a consequence of the architectural bet: the pure logic is testable; the Obsidian-coupled code is not, without mocking an API surface that the authors have chosen not to mock. The entire test file imports only from `changelog.ts`. Whether this gap should be closed (by introducing Obsidian API mocks or integration tests) or accepted (as the cost of the clean-separation design) is an open question.
-
-**The `onunload` is empty.** Commit 9883681 added an explicit empty `onunload` method. Obsidian's `Plugin` base class handles event cleanup for anything registered via `registerEvent`, so this is likely there to satisfy a linter, a type checker, or Obsidian's plugin validation. But it means teardown of the debounced handler relies entirely on Obsidian's own cleanup—if the debounce fires after unload, it would attempt to update a changelog in a potentially torn-down state. I suspect this is harmless in practice (debounce timers would be short-lived), but it is a place where the theory is thin.
-
-**Provenance.** The manifest says "originally by Badr Bouslikhin." The earliest commits show a different coding style and architecture (the original had no separation between plugin and logic, no tests, and used async patterns that caused startup exceptions). The current codebase is effectively a rewrite that preserved the original's purpose and plugin identity. The v1.3.0 changelog entry—"Plugin class is now a thin shell"—marks the moment the current theory was established. Everything before it is archaeological; everything after it is refinement of that same idea.
+**Total: 6 issues (0 critical, 1 high, 3 medium, 2 low)**

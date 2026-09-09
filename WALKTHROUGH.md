@@ -1,23 +1,24 @@
-# Obsidian Vault Changelog Walkthrough
+# Vault Changelog Walkthrough
 
-*2026-07-01T17:56:44Z by Showboat 0.6.1*
-<!-- showboat-id: c0dcf9c0-fe5d-451d-a786-1f43c5ee96a9 -->
+*2026-09-09T21:51:49Z by Showboat 0.6.1*
+<!-- showboat-id: db6225c6-0bb7-4059-bd76-b52f4be3067d -->
 
 ## Overview
 
-**Vault Changelog** is an Obsidian plugin that maintains a changelog file listing recently edited notes. The changelog is **fully overwritten** on every update — no history is preserved, no diffing, just a fresh render of "these are the N most recently modified notes right now."
+**Vault Changelog** is an [Obsidian](https://obsidian.md/) community plugin. It keeps one note
+in your vault listing the most recently edited notes, newest first, with a timestamp on each
+line.
 
-Built with Bun (bundler + test runner + package manager) and TypeScript, targeting the Obsidian plugin API. Biome handles linting/formatting.
+The single most important thing to know before reading any code: **the changelog note is
+regenerated from scratch every time and overwritten wholesale.** Nothing is appended and no
+history is kept. The output is a pure function of the vault's current state — which is why
+there is no merge logic, no locking, and no retry anywhere in this codebase.
 
-## Architecture
+Technologies: TypeScript, bundled with Bun's native bundler, tested with `bun test`, linted and
+formatted with Biome. The `obsidian` package is types-only — there is no JavaScript in it — so
+nothing here can execute an Obsidian API call outside of Obsidian itself.
 
-The codebase has an intentional split between pure logic and Obsidian integration:
-
-- `src/changelog.ts` — **pure functions**, no Obsidian imports. Settings shape, validation/normalization, file filtering/sorting, and changelog text generation. Every unit test targets this file.
-- `src/main.ts` — `ChangelogPlugin extends Plugin`. Wires up the command palette entry, vault event handlers, debouncing, and file I/O.
-- `src/settings.ts` — `ChangelogSettingsTab` (the settings UI) and `PathSuggest` (an autocomplete helper for path-shaped fields).
-
-This split exists so the interesting logic (validation, filtering, formatting) can be unit tested with plain Bun `test`, without mocking Obsidian's `App`/`Vault`/`TFile` machinery. Obsidian-specific behavior (like `normalizePath` or `window.moment`) is injected into the pure functions as callback parameters.
+The manifest is what Obsidian reads to load the plugin:
 
 ```bash
 cat manifest.json
@@ -37,12 +38,396 @@ cat manifest.json
 }
 ```
 
-## Settings shape and defaults
+## Architecture
 
-`ChangelogSettings` is the single source of truth for the plugin's persisted configuration. `DEFAULT_SETTINGS` doubles as both the initial state and the fallback value for every field-level validation guard described below.
+Three source files, and the boundary between them is deliberate:
+
+- **`src/changelog.ts`** — the pure core. Zero imports. Every decision the plugin makes about
+  *what* the changelog should contain lives here, expressed as functions over plain data.
+- **`src/main.ts`** — the plugin shell. Extends Obsidian's `Plugin`, registers the command and
+  the vault listeners, and does all the I/O.
+- **`src/settings.ts`** — the settings tab and the path autocompleter. All DOM, no decisions.
+
+The pure core is the whole point of the layout: it is the only file the test suite touches, and
+it can be tested without Obsidian because the two things it would otherwise need — a clock
+formatter and a path normalizer — are passed in as arguments.
 
 ```bash
-sed -n '1,19p' src/changelog.ts
+cat <<'TREE'
+obsidian-vault-changelog/
+├── src/
+│   ├── changelog.ts       pure core: filter, sort, render, validate, normalize
+│   ├── main.ts            Plugin subclass: lifecycle, command, events, file I/O
+│   ├── settings.ts        ChangelogSettingsTab + PathSuggest
+│   └── changelog.test.ts  the entire test suite, all of it against changelog.ts
+├── build.ts               Bun bundler wrapper (+ watch mode)
+├── deploy.ts              local convenience: copy build into a vault
+├── version-bump.ts        package.json version -> manifest.json + versions.json
+├── main.js                the committed build artifact Obsidian actually loads
+├── manifest.json          plugin metadata
+├── versions.json          version -> minAppVersion history
+└── styles.css             styling for the excluded-folders list
+TREE
+```
+
+```output
+obsidian-vault-changelog/
+├── src/
+│   ├── changelog.ts       pure core: filter, sort, render, validate, normalize
+│   ├── main.ts            Plugin subclass: lifecycle, command, events, file I/O
+│   ├── settings.ts        ChangelogSettingsTab + PathSuggest
+│   └── changelog.test.ts  the entire test suite, all of it against changelog.ts
+├── build.ts               Bun bundler wrapper (+ watch mode)
+├── deploy.ts              local convenience: copy build into a vault
+├── version-bump.ts        package.json version -> manifest.json + versions.json
+├── main.js                the committed build artifact Obsidian actually loads
+├── manifest.json          plugin metadata
+├── versions.json          version -> minAppVersion history
+└── styles.css             styling for the excluded-folders list
+```
+
+## 1. The entry point: `ChangelogPlugin`
+
+Obsidian loads `main.js` and instantiates the default export. Everything starts here.
+
+Two things happen at the class body level, before any method runs. `settings` is seeded with
+`DEFAULT_SETTINGS` so the object is never `undefined` even if loading fails, and the debounced
+vault-change handler is created once as a property rather than per-event — creating it inside
+the event handler would make a fresh debouncer for every keystroke and defeat the point.
+
+```bash
+sed -n '19,25p' src/main.ts
+```
+
+```output
+export default class ChangelogPlugin extends Plugin {
+  settings: ChangelogSettings = DEFAULT_SETTINGS;
+  private debouncedVaultChange = debounce(() => {
+    void this.updateChangelog().catch(() => {
+      new Notice("Failed to update changelog");
+    });
+  }, 200);
+```
+
+### `onload` — the whole wiring in 27 lines
+
+Settings are loaded first, because everything else reads them. Then the settings tab, then the
+command, then three vault listeners.
+
+The `handler` closure is where the plugin's most important safety property lives. It checks
+three conditions **before** poking the debouncer:
+
+1. `autoUpdate` is on — otherwise the user only wants the manual command.
+2. The subject is a `TFile`, not a folder. Vault events fire for both.
+3. The changed file is **not** the changelog itself.
+
+That third check is the loop breaker. Writing the changelog fires a `modify` event for the
+changelog; without the guard, the plugin would rewrite the file in response to having just
+rewritten it, forever. The guards sit outside the debounced callback on purpose — putting them
+inside would let ignorable events still arm the timer.
+
+All three listeners share one handler, so a rename or a delete rebuilds the changelog just as a
+modification does. `registerEvent` hands teardown to Obsidian, which is why `onunload` further
+down has nothing to do.
+
+```bash
+sed -n '27,53p' src/main.ts
+```
+
+```output
+  async onload(): Promise<void> {
+    await this.loadSettings();
+    this.addSettingTab(new ChangelogSettingsTab(this.app, this));
+
+    this.addCommand({
+      id: "update-changelog",
+      name: "Update Changelog",
+      callback: () => {
+        this.updateChangelog().catch(() => {
+          new Notice("Failed to update changelog");
+        });
+      },
+    });
+
+    const handler = (file: TAbstractFile) => {
+      if (
+        this.settings.autoUpdate &&
+        file instanceof TFile &&
+        file.path !== this.settings.changelogPath
+      ) {
+        this.debouncedVaultChange();
+      }
+    };
+    this.registerEvent(this.app.vault.on("modify", handler));
+    this.registerEvent(this.app.vault.on("delete", handler));
+    this.registerEvent(this.app.vault.on("rename", handler));
+  }
+```
+
+## 2. The update: three steps, no state
+
+Both paths — the command palette and the debounced vault handler — converge on
+`updateChangelog`. It reads like a pipeline because it is one: gather, render, write. No
+previous output is consulted.
+
+Note the fourth argument to `generateChangelog`: a closure wrapping `window.moment`. Obsidian
+installs moment as a global, so the plugin uses it without bundling it. Passing it in as a
+function is what keeps `changelog.ts` free of any dependency on Obsidian's environment — the
+test suite passes the npm `moment` package through the same parameter.
+
+```bash
+sed -n '55,70p' src/main.ts
+```
+
+```output
+  async updateChangelog(): Promise<void> {
+    const recentFiles = filterAndSort(
+      this.app.vault.getMarkdownFiles(),
+      this.settings.changelogPath,
+      this.settings.excludedFolders,
+      this.settings.maxRecentFiles,
+    );
+    const changelog = generateChangelog(
+      recentFiles,
+      this.settings.datetimeFormat,
+      this.settings.useWikiLinks,
+      this.settings.changelogHeading,
+      (mtime, fmt) => window.moment(mtime).format(fmt),
+    );
+    await this.writeToFile(this.settings.changelogPath, changelog);
+  }
+```
+
+## 3. Step one — `filterAndSort`
+
+We cross into the pure core. First, the type it works against:
+
+```bash
+sed -n '106,110p' src/changelog.ts
+```
+
+```output
+interface ChangelogFile {
+  path: string;
+  basename: string;
+  stat: { mtime: number };
+}
+```
+
+`ChangelogFile` is the narrowest structural subset of Obsidian's `TFile` these functions
+actually touch. A real `TFile` satisfies it, so `main.ts` passes `getMarkdownFiles()` straight
+through with no adapter; a three-field object literal in a test satisfies it too. Widening this
+to `TFile` would drag `obsidian` into the pure module and collapse the arrangement — if you need
+another property, add it here instead.
+
+Now the function. Filter, then sort by modification time descending, then truncate:
+
+```bash
+sed -n '112,129p' src/changelog.ts
+```
+
+```output
+export function filterAndSort(
+  files: ChangelogFile[],
+  changelogPath: string,
+  excludedFolders: string[],
+  maxRecentFiles: number,
+): ChangelogFile[] {
+  return files
+    .filter((file) => {
+      if (file.path === changelogPath) return false;
+      for (const folder of excludedFolders) {
+        if (file.path.startsWith(folder.endsWith("/") ? folder : `${folder}/`))
+          return false;
+      }
+      return true;
+    })
+    .sort((a, b) => b.stat.mtime - a.stat.mtime)
+    .slice(0, maxRecentFiles);
+}
+```
+
+The ternary inside the filter deserves a pause, because it looks redundant and is not:
+`folder.endsWith("/") ? folder : folder + "/"`.
+
+Both branches are live. Obsidian's `normalizePath` strips trailing slashes, so anything saved
+through the settings UI today arrives as `Archive`. But the setting predates that
+normalization, so an old `data.json` can still hold `Archive/`. The slash is re-added at match
+time rather than migrated at save time.
+
+And the slash *matters*. Matching on the bare prefix `Notes` would also swallow `Notes2/` and
+`Notebook/`. Watch the real function do it — excluding `Notes` leaves the two lookalikes alone:
+
+```bash
+bun -e '
+import { filterAndSort } from "./src/changelog.ts";
+const files = [
+  { path: "Notes/file.md",    basename: "file",  stat: { mtime: 100 } },
+  { path: "Notes2/file.md",   basename: "file2", stat: { mtime: 200 } },
+  { path: "Notebook/file.md", basename: "file3", stat: { mtime: 300 } },
+];
+for (const f of filterAndSort(files, "Changelog.md", ["Notes"], 25)) console.log(f.path);
+'
+```
+
+```output
+Notebook/file.md
+Notes2/file.md
+```
+
+## 4. Step two — `generateChangelog`
+
+The renderer. Everything variable about the output is a parameter, including the clock:
+
+```bash
+sed -n '131,147p' src/changelog.ts
+```
+
+```output
+export type TimeFormatter = (mtime: number, format: string) => string;
+
+export function generateChangelog(
+  files: ChangelogFile[],
+  datetimeFormat: string,
+  useWikiLinks: boolean,
+  changelogHeading: string,
+  formatTime: TimeFormatter,
+): string {
+  let content = changelogHeading ? `${changelogHeading}\n\n` : "";
+  for (const file of files) {
+    const time = formatTime(file.stat.mtime, datetimeFormat);
+    const name = useWikiLinks ? `[[${file.basename}]]` : file.basename;
+    content += `- ${time} · ${name}\n`;
+  }
+  return content;
+}
+```
+
+Three details carry weight:
+
+- The heading is emitted **only if non-empty**, followed by exactly two newlines. That spacing
+  is only predictable because `changelogHeading` is trimmed at both boundaries — on load and on
+  change — so a stray trailing newline in the setting cannot smear the layout.
+- The heading is written *literally*. Configure `# Changelog` and you get `# Changelog`; the
+  plugin does not add a `#` for you.
+- With no files, the result is the empty string — heading and all. An empty vault produces an
+  empty note, not a header over nothing.
+
+Here is the renderer producing real output, with the npm `moment` standing in for Obsidian's
+global exactly as the tests do:
+
+```bash
+bun -e '
+import { generateChangelog } from "./src/changelog.ts";
+import moment from "moment";
+const utc = (mtime, f) => moment.utc(mtime).format(f);
+const files = [
+  { path: "Note B.md", basename: "Note B", stat: { mtime: Date.UTC(2026, 0, 15, 14, 30) } },
+  { path: "Note A.md", basename: "Note A", stat: { mtime: Date.UTC(2026, 0, 15, 14, 0) } },
+];
+process.stdout.write(generateChangelog(files, "YYYY-MM-DD[T]HHmm", true, "# Changelog", utc));
+console.log("---- wiki-links off, no heading ----");
+process.stdout.write(generateChangelog(files, "YYYY-MM-DD[T]HHmm", false, "", utc));
+'
+```
+
+```output
+# Changelog
+
+- 2026-01-15T1430 · [[Note B]]
+- 2026-01-15T1400 · [[Note A]]
+---- wiki-links off, no heading ----
+- 2026-01-15T1430 · Note B
+- 2026-01-15T1400 · Note A
+```
+
+## 5. Step three — `writeToFile`
+
+Back in the shell. This is the only place the plugin mutates the vault:
+
+```bash
+sed -n '72,88p' src/main.ts
+```
+
+```output
+  async writeToFile(path: string, content: string): Promise<void> {
+    let file = this.app.vault.getAbstractFileByPath(path);
+    if (!file) {
+      try {
+        file = await this.app.vault.create(path, "");
+      } catch {
+        // File may have been created by a concurrent event (TOCTOU race)
+        file = this.app.vault.getAbstractFileByPath(path);
+        if (!file) throw new Error(`Failed to create changelog at: ${path}`);
+      }
+    }
+    if (file instanceof TFile) {
+      await this.app.vault.modify(file, content);
+    } else {
+      new Notice(`Could not update changelog at path: ${path}`);
+    }
+  }
+```
+
+Read the `catch` carefully — it is doing something unusual on purpose. `vault.create` can throw
+because the file already exists, and between the `getAbstractFileByPath` check above and the
+`create` call, a concurrent vault event may have created it. Rather than treat the throw as
+failure, the code re-fetches by path and carries on. Only if the second lookup *also* comes up
+empty does it give up.
+
+That tolerance is safe precisely because the changelog is derived: whoever won the race was
+going to write the same content this call is about to write. This is the TOCTOU handling
+`CLAUDE.md` asks you to preserve.
+
+The final `else` covers the case where the path resolves to a folder rather than a file — you
+cannot `modify` a folder, so the user gets a `Notice` instead of an exception.
+
+`vault.modify` replaces the entire file. There is no append and no merge. Whatever was in that
+note is gone.
+
+```bash
+sed -n '90,107p' src/main.ts
+```
+
+```output
+  async loadSettings(): Promise<void> {
+    this.settings = normalizeLoadedSettings(
+      await this.loadData(),
+      normalizePath,
+    );
+  }
+
+  onunload(): void {}
+
+  async saveSettings(): Promise<void> {
+    await this.saveData(this.settings);
+  }
+
+  saveSettingsSafely(): void {
+    this.saveSettings().catch(() => {
+      new Notice("Failed to save changelog settings");
+    });
+  }
+```
+
+The tail of the class. `loadSettings` hands the raw persisted blob straight to
+`normalizeLoadedSettings` along with Obsidian's `normalizePath` — that injection is the whole
+reason the pure core can validate paths without importing Obsidian.
+
+`onunload` is empty because there is nothing to undo: every listener went through
+`registerEvent`, which Obsidian tears down itself.
+
+`saveSettingsSafely` exists because the settings UI calls save from synchronous event handlers
+that cannot `await`. Without it, a rejected save becomes an unhandled promise rejection; with
+it, the user sees a `Notice`.
+
+## 6. The settings model
+
+Seven settings, and the defaults are chosen conservatively: auto-update is **off**, so a fresh
+install never writes to the vault until asked.
+
+```bash
+sed -n '1,21p' src/changelog.ts
 ```
 
 ```output
@@ -65,59 +450,21 @@ export const DEFAULT_SETTINGS: ChangelogSettings = {
   useWikiLinks: true,
   changelogHeading: "",
 };
-```
 
-## Clamping `maxRecentFiles`
-
-`clampMaxRecentFiles` is the one authoritative rule for this field: coerce to a number, fall back to the default if not finite, then floor and clamp to `[1, MAX_RECENT_FILES]`. Both the settings-load path and the settings UI call this same function, so the rule can't drift between the two call sites.
-
-```bash
-sed -n '21,32p' src/changelog.ts
-```
-
-```output
 export const MAX_RECENT_FILES = 500;
-
-/**
- * The one authoritative clamping rule for maxRecentFiles: floor to an
- * integer and clamp to [1, MAX_RECENT_FILES]; non-finite input falls back
- * to the default. Load-time and the settings UI both call this.
- */
-export function clampMaxRecentFiles(value: unknown): number {
-  const raw = Number(value);
-  if (!Number.isFinite(raw)) return DEFAULT_SETTINGS.maxRecentFiles;
-  return Math.max(1, Math.min(Math.floor(raw), MAX_RECENT_FILES));
-}
 ```
 
-## Normalizing persisted settings
+### `normalizeLoadedSettings` — treating `data.json` as hostile
 
-`normalizeLoadedSettings` turns whatever Obsidian's `loadData()` returns (an untyped blob from `data.json`) into a valid, fully-typed `ChangelogSettings`.
-
-It does four things in sequence:
-
-1. **Drop unknown keys.** Only keys present in `DEFAULT_SETTINGS` survive, so a renamed or removed setting from an older version doesn't linger forever.
-2. **Type-guard known keys.** A hand-edited or corrupted `data.json` can have the right key with the wrong runtime type (`"datetimeFormat": 123`, `"excludedFolders": null`, `"autoUpdate": "false"`). Every field that later gets dereferenced with a type-specific method (`.trim()`, `.map()`, `Array.isArray`) or rendered as a specific widget (a toggle expects a real boolean) falls back to its default rather than crashing plugin load partway through `onload()`.
-3. **Normalize paths.** `changelogPath` and every `excludedFolders` entry go through an injected `normalize` function (Obsidian's `normalizePath` in production), so downstream duplicate-detection and comparisons stay consistent.
-4. **Clamp and trim.** `maxRecentFiles` goes through `clampMaxRecentFiles`; `changelogHeading` is trimmed so `generateChangelog`'s `"\n\n"` spacing stays predictable.
-
-`normalize` is injected as a parameter (rather than imported directly) specifically so this function — and the rest of `changelog.ts` — can stay Obsidian-free and unit-testable with a plain identity function in tests.
+Obsidian persists settings as JSON in the vault, where a user can hand-edit it and a failed
+write can truncate it. This function is the single gate between that file and the running
+plugin, and it is deliberately paranoid:
 
 ```bash
-sed -n '34,79p' src/changelog.ts
+sed -n '44,83p' src/changelog.ts
 ```
 
 ```output
-/**
- * Turn persisted data into valid settings: drop unknown keys (so renamed
- * or removed settings don't linger), fall back to defaults for known keys
- * whose runtime type doesn't match (guards against hand-edited or corrupt
- * data.json), normalize folder paths so duplicate detection in the
- * settings UI stays consistent, clamp maxRecentFiles, and trim the
- * heading so generateChangelog's "\n\n" spacing stays predictable.
- * `normalize` is injected (Obsidian's normalizePath in production) to
- * keep this module Obsidian-free.
- */
 export function normalizeLoadedSettings(
   raw: unknown,
   normalize: (path: string) => string,
@@ -154,21 +501,121 @@ export function normalizeLoadedSettings(
   }
   settings.changelogPath = normalize(settings.changelogPath);
   settings.excludedFolders = settings.excludedFolders.map(normalize);
-```
-
-## Path and folder validation
-
-Two small, independently testable predicates back the settings UI's input validation:
-
-```bash
-sed -n '81,100p' src/changelog.ts
-```
-
-```output
+  settings.maxRecentFiles = clampMaxRecentFiles(settings.maxRecentFiles);
   settings.changelogHeading = settings.changelogHeading.trim();
   return settings;
 }
+```
 
+Five passes, in order:
+
+1. **Drop unknown keys.** A setting you rename or remove does not linger in `data.json`
+   forever.
+2. **Type-check the known keys.** Strings, then booleans, each falling back to its default when
+   the runtime type is wrong. `excludedFolders` is checked as a whole — one non-string element
+   discards the entire array rather than leaving a mixed one.
+3. **Normalize paths**, via the injected normalizer, so the settings UI's duplicate detection
+   compares like with like.
+4. **Clamp `maxRecentFiles`.**
+5. **Trim the heading**, which is what makes `generateChangelog`'s two-newline spacing
+   predictable.
+
+**If you add a setting, add it to `DEFAULT_SETTINGS` *and* to the matching type-guard loop.**
+Doing only the first compiles, passes the tests, and ships a setting that corrupt persisted data
+can turn into `undefined` at runtime.
+
+Watch it discard junk and rebuild a valid object:
+
+```bash
+bun -e '
+import { normalizeLoadedSettings } from "./src/changelog.ts";
+const hostile = {
+  autoUpdate: "yes please",
+  maxRecentFiles: 9999,
+  changelogHeading: "   # Changelog  ",
+  excludedFolders: ["Archive/", 42],
+  legacySetting: "left over from v1.2",
+};
+console.log(JSON.stringify(normalizeLoadedSettings(hostile, (p) => p.replace(/\/+$/, "")), null, 2));
+'
+```
+
+```output
+{
+  "autoUpdate": false,
+  "changelogPath": "Changelog.md",
+  "datetimeFormat": "YYYY-MM-DD[T]HHmm",
+  "maxRecentFiles": 500,
+  "excludedFolders": [],
+  "useWikiLinks": true,
+  "changelogHeading": "# Changelog"
+}
+```
+
+Every hostile field was neutralised: `"yes please"` reverted to `false`, `9999` clamped to the
+cap, the mixed `excludedFolders` array discarded whole because of the `42` in it, the heading
+trimmed, and `legacySetting` dropped.
+
+### `clampMaxRecentFiles` — one rule, two callers
+
+Load-time and the settings UI both call this, and the comment says so. That single-authority
+rule is not decoration: the two paths once disagreed about floats and about the upper bound, and
+reconciling them was the point of release 1.5.3. Do not re-derive the rule at a third call site.
+
+```bash
+sed -n '23,32p' src/changelog.ts
+```
+
+```output
+/**
+ * The one authoritative clamping rule for maxRecentFiles: floor to an
+ * integer and clamp to [1, MAX_RECENT_FILES]; non-finite input falls back
+ * to the default. Load-time and the settings UI both call this.
+ */
+export function clampMaxRecentFiles(value: unknown): number {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return DEFAULT_SETTINGS.maxRecentFiles;
+  return Math.max(1, Math.min(Math.floor(raw), MAX_RECENT_FILES));
+}
+```
+
+```bash
+bun -e '
+import { clampMaxRecentFiles as clamp } from "./src/changelog.ts";
+const cases = [
+  ["25", 25], ["25.9", 25.9], ["0", 0], ["-5", -5], ["1000", 1000],
+  ["\"42\"", "42"], ["\"abc\"", "abc"], ["NaN", Number.NaN],
+  ["undefined", undefined], ["Infinity", Number.POSITIVE_INFINITY],
+];
+for (const [label, value] of cases) process.stdout.write(label.padEnd(12) + "-> " + String(clamp(value)) + "\n");
+'
+```
+
+```output
+25          -> 25
+25.9        -> 25
+0           -> 1
+-5          -> 1
+1000        -> 500
+"42"        -> 42
+"abc"       -> 25
+NaN         -> 25
+undefined   -> 25
+Infinity    -> 25
+```
+
+Non-finite input falls back to the default rather than clamping, which is the right call: `NaN`
+means "this data is garbage", not "this data is small".
+
+### The two validators
+
+Both are called from the settings UI, on already-normalized input:
+
+```bash
+sed -n '85,104p' src/changelog.ts
+```
+
+```output
 /** The changelog must be a markdown file; paths are validated post-normalize. */
 export function isValidChangelogPath(normalizedPath: string): boolean {
   return normalizedPath.endsWith(".md");
@@ -185,231 +632,30 @@ export function validateExcludedFolder(
   normalizedFolder: string,
   existing: string[],
 ): ExcludedFolderVerdict {
-```
-
-## Filtering and sorting recent files
-
-`filterAndSort` is the core selection logic: exclude the changelog file itself (so it never lists its own last-modified time), exclude anything under an excluded folder, sort newest-first by modification time, then cap to `maxRecentFiles`.
-
-```bash
-sed -n '102,125p' src/changelog.ts
-```
-
-```output
+  if (!normalizedFolder || normalizedFolder === ".") return "invalid";
   if (existing.includes(normalizedFolder)) return "duplicate";
   return "ok";
 }
-
-interface ChangelogFile {
-  path: string;
-  basename: string;
-  stat: { mtime: number };
-}
-
-export function filterAndSort(
-  files: ChangelogFile[],
-  changelogPath: string,
-  excludedFolders: string[],
-  maxRecentFiles: number,
-): ChangelogFile[] {
-  return files
-    .filter((file) => {
-      if (file.path === changelogPath) return false;
-      for (const folder of excludedFolders) {
-        if (file.path.startsWith(folder.endsWith("/") ? folder : `${folder}/`))
-          return false;
-      }
-      return true;
 ```
 
-## Generating the changelog text
+`validateExcludedFolder` returns a three-valued verdict rather than a boolean, so the UI can say
+something different about a rejected path than about one already in the list. Hold on to that —
+it comes back in the findings below.
 
-`generateChangelog` takes the already-filtered/sorted file list and renders it as markdown: an optional heading, then one bullet per file with a formatted timestamp and either a wiki-link or a plain filename. `formatTime` is injected as a `TimeFormatter` callback (backed by `window.moment` in production) so this function needs no Obsidian import either.
+## 7. The settings tab
+
+`src/settings.ts` builds the UI. It is the largest file and the least interesting, because it
+holds no decisions — every judgement it needs it imports from `changelog.ts`.
+
+### `PathSuggest`
+
+A subclass of Obsidian's `AbstractInputSuggest`, shared by both path fields:
 
 ```bash
-sed -n '127,146p' src/changelog.ts
+sed -n '28,47p' src/settings.ts
 ```
 
 ```output
-    .sort((a, b) => b.stat.mtime - a.stat.mtime)
-    .slice(0, maxRecentFiles);
-}
-
-export type TimeFormatter = (mtime: number, format: string) => string;
-
-export function generateChangelog(
-  files: ChangelogFile[],
-  datetimeFormat: string,
-  useWikiLinks: boolean,
-  changelogHeading: string,
-  formatTime: TimeFormatter,
-): string {
-  let content = changelogHeading ? `${changelogHeading}\n\n` : "";
-  for (const file of files) {
-    const time = formatTime(file.stat.mtime, datetimeFormat);
-    const name = useWikiLinks ? `[[${file.basename}]]` : file.basename;
-    content += `- ${time} · ${name}\n`;
-  }
-  return content;
-```
-
-## Plugin lifecycle: `onload`
-
-`ChangelogPlugin.onload` loads settings, registers the settings tab, adds a command-palette entry, and wires up vault event handlers for `modify`/`delete`/`rename`. Every handler funnels through the same debounced updater — 200ms, via Obsidian's `debounce` helper — so a burst of file changes triggers one regeneration, not one per file. The handler explicitly skips edits to the changelog file itself, which prevents the write in `updateChangelog` from re-triggering its own `modify` event.
-
-```bash
-sed -n '1,53p' src/main.ts
-```
-
-```output
-import {
-  debounce,
-  Notice,
-  normalizePath,
-  Plugin,
-  type TAbstractFile,
-  TFile,
-} from "obsidian";
-
-import {
-  type ChangelogSettings,
-  DEFAULT_SETTINGS,
-  filterAndSort,
-  generateChangelog,
-  normalizeLoadedSettings,
-} from "./changelog";
-import { ChangelogSettingsTab } from "./settings";
-
-export default class ChangelogPlugin extends Plugin {
-  settings: ChangelogSettings = DEFAULT_SETTINGS;
-  private debouncedVaultChange = debounce(() => {
-    void this.updateChangelog().catch(() => {
-      new Notice("Failed to update changelog");
-    });
-  }, 200);
-
-  async onload(): Promise<void> {
-    await this.loadSettings();
-    this.addSettingTab(new ChangelogSettingsTab(this.app, this));
-
-    this.addCommand({
-      id: "update-changelog",
-      name: "Update Changelog",
-      callback: () => {
-        this.updateChangelog().catch(() => {
-          new Notice("Failed to update changelog");
-        });
-      },
-    });
-
-    const handler = (file: TAbstractFile) => {
-      if (
-        this.settings.autoUpdate &&
-        file instanceof TFile &&
-        file.path !== this.settings.changelogPath
-      ) {
-        this.debouncedVaultChange();
-      }
-    };
-    this.registerEvent(this.app.vault.on("modify", handler));
-    this.registerEvent(this.app.vault.on("delete", handler));
-    this.registerEvent(this.app.vault.on("rename", handler));
-  }
-```
-
-## Regenerating and writing the changelog
-
-`updateChangelog` composes the pure functions from `changelog.ts`: pull all markdown files from the vault, filter/sort them, render the text, then write it out. `writeToFile` tolerates a TOCTOU race — if `vault.create` throws because a concurrent event already created the file, it falls back to `getAbstractFileByPath` instead of surfacing an error.
-
-```bash
-sed -n '55,88p' src/main.ts
-```
-
-```output
-  async updateChangelog(): Promise<void> {
-    const recentFiles = filterAndSort(
-      this.app.vault.getMarkdownFiles(),
-      this.settings.changelogPath,
-      this.settings.excludedFolders,
-      this.settings.maxRecentFiles,
-    );
-    const changelog = generateChangelog(
-      recentFiles,
-      this.settings.datetimeFormat,
-      this.settings.useWikiLinks,
-      this.settings.changelogHeading,
-      (mtime, fmt) => window.moment(mtime).format(fmt),
-    );
-    await this.writeToFile(this.settings.changelogPath, changelog);
-  }
-
-  async writeToFile(path: string, content: string): Promise<void> {
-    let file = this.app.vault.getAbstractFileByPath(path);
-    if (!file) {
-      try {
-        file = await this.app.vault.create(path, "");
-      } catch {
-        // File may have been created by a concurrent event (TOCTOU race)
-        file = this.app.vault.getAbstractFileByPath(path);
-        if (!file) throw new Error(`Failed to create changelog at: ${path}`);
-      }
-    }
-    if (file instanceof TFile) {
-      await this.app.vault.modify(file, content);
-    } else {
-      new Notice(`Could not update changelog at path: ${path}`);
-    }
-  }
-```
-
-## Settings persistence
-
-`loadSettings` is where `normalizeLoadedSettings` gets its Obsidian dependency injected: `normalizePath` for folder/path normalization. `saveSettingsSafely` wraps the async save in a `.catch()` so a failed write surfaces as a `Notice` instead of an unhandled rejection — the settings UI calls this variant on every field change rather than awaiting `saveSettings` directly.
-
-```bash
-sed -n '90,108p' src/main.ts
-```
-
-```output
-  async loadSettings(): Promise<void> {
-    this.settings = normalizeLoadedSettings(
-      await this.loadData(),
-      normalizePath,
-    );
-  }
-
-  onunload(): void {}
-
-  async saveSettings(): Promise<void> {
-    await this.saveData(this.settings);
-  }
-
-  saveSettingsSafely(): void {
-    this.saveSettings().catch(() => {
-      new Notice("Failed to save changelog settings");
-    });
-  }
-}
-```
-
-## Path autocomplete: `PathSuggest`
-
-`PathSuggest` extends Obsidian's `AbstractInputSuggest` to offer folder and markdown-file completions for any text input. It lazily builds and caches the full path list on first use (`getPaths`) rather than rescanning the vault on every keystroke — the cache lives for the lifetime of the settings tab render, since `display()` rebuilds the whole tab (and a fresh `PathSuggest`) each time it's opened.
-
-```bash
-sed -n '19,59p' src/settings.ts
-```
-
-```output
-class PathSuggest extends AbstractInputSuggest<string> {
-  inputEl: HTMLInputElement;
-  private cachedPaths: string[] | null = null;
-
-  constructor(app: App, inputEl: HTMLInputElement) {
-    super(app, inputEl);
-    this.inputEl = inputEl;
-  }
-
   private getPaths(): string[] {
     if (this.cachedPaths) return this.cachedPaths;
 
@@ -430,72 +676,46 @@ class PathSuggest extends AbstractInputSuggest<string> {
     const lowerInput = inputStr.toLowerCase();
     return this.getPaths().filter((p) => p.toLowerCase().contains(lowerInput));
   }
+```
 
-  renderSuggestion(path: string, el: HTMLElement): void {
-    el.setText(path);
-  }
+Every folder (slash-suffixed) and every markdown file, in one flat list, cached on first use.
+The cache is never invalidated — but `display()` rebuilds the tab's DOM and constructs fresh
+suggesters each time the settings tab is opened, so in practice it is stale only for files
+created while the tab sits open. That trade was made deliberately in 1.5.0 to stop the vault
+being rescanned on every keystroke.
 
+Note that one list serves both fields: the changelog-path field wants a file and the
+excluded-folder field wants a folder, and neither gets a filtered view. That comes back in the
+findings too.
+
+`selectSuggestion` does something worth knowing about — it dispatches a synthetic `blur` event:
+
+```bash
+sed -n '53,58p' src/settings.ts
+```
+
+```output
   selectSuggestion(path: string): void {
     this.inputEl.value = path;
     this.inputEl.trigger("input");
     this.inputEl.dispatchEvent(new Event("blur"));
     this.close();
   }
-}
 ```
 
-## Rendering the excluded-folders list
+Both path fields save on `blur` rather than on `change`, so that a half-typed path is never
+persisted mid-keystroke. Picking a suggestion with the mouse would otherwise never fire `blur`
+and the choice would be silently dropped, so the suggester fires it by hand.
 
-`renderExcludedFolders` redraws the excluded-folder list into its container div. Each entry gets a remove button; clicking it splices the folder out of `settings.excludedFolders`, saves, and re-renders just this sub-list rather than the whole settings tab. The button carries an `aria-label` — its only visible content is a "✕" glyph, which conveys "remove" to sighted users via context and hover styling but nothing to a screen reader without an explicit label.
+### The changelog-path field
+
+The one setting that can destroy data, and the whole of its validation:
 
 ```bash
-sed -n '69,96p' src/settings.ts
+sed -n '114,134p' src/settings.ts
 ```
 
 ```output
-  renderExcludedFolders(container: HTMLElement): void {
-    container.empty();
-
-    if (this.plugin.settings.excludedFolders.length === 0) {
-      container.createDiv({ text: "No excluded folders" });
-      return;
-    }
-
-    this.plugin.settings.excludedFolders.forEach((folder) => {
-      const folderDiv = container.createDiv("excluded-folder-item");
-      folderDiv.createSpan({ text: folder });
-
-      const removeButton = folderDiv.createEl("button", {
-        text: "✕",
-        cls: "excluded-folder-remove",
-        attr: { "aria-label": "Remove excluded folder" },
-      });
-
-      removeButton.addEventListener("click", () => {
-        const index = this.plugin.settings.excludedFolders.indexOf(folder);
-        if (index > -1) {
-          this.plugin.settings.excludedFolders.splice(index, 1);
-          this.plugin.saveSettingsSafely();
-          this.renderExcludedFolders(container);
-        }
-      });
-    });
-  }
-```
-
-## The settings tab: two validation-timing conventions
-
-`display()` builds the whole settings tab from scratch on every open (`containerEl.empty()` first), so there's no risk of stale listeners accumulating across renders. Text fields in this tab follow one of two conventions, chosen per field based on what the field needs:
-
-- **Validate on `blur`, revert + `Notice` on failure.** Used for `changelogPath` and `maxRecentFiles` — both have a hard validity constraint (must end in `.md`; must be an integer in range) and both need to tolerate the user clearing the field mid-edit without getting fought over every keystroke. `PathSuggest.selectSuggestion` (above) explicitly dispatches a synthetic `blur` event so picking a suggestion commits immediately, exercising the same commit path as manually blurring the field.
-- **Validate on every `onChange`.** Used for `datetimeFormat` (drives a live preview that must update per keystroke) and `changelogHeading` (just trims — no invalid state to fight the user over).
-
-```bash
-sed -n '113,134p' src/settings.ts
-```
-
-```output
-
     new Setting(containerEl)
       .setName("Changelog path")
       .setDesc("Relative path including filename and extension")
@@ -519,10 +739,59 @@ sed -n '113,134p' src/settings.ts
       });
 ```
 
-The datetime format field is the `onChange` counterpart — every keystroke updates both the setting and a live preview rendered via `window.moment`:
+Normalize, check it ends in `.md`, save — or revert the field and explain why. That `.md` check
+is the *entire* guard standing between a user's typo and `vault.modify` overwriting a real note.
+
+### The excluded-folders list
+
+Rendering is a straightforward rebuild-in-place: empty the container, print a placeholder if the
+list is empty, otherwise one row per folder with a remove button. Removing splices the array,
+saves, and re-renders itself.
+
+Adding is where the verdict from §6 is consumed:
 
 ```bash
-sed -n '136,157p' src/settings.ts
+sed -n '224,244p' src/settings.ts
+```
+
+```output
+      .addButton((button) => {
+        button.setButtonText("Add").onClick(() => {
+          const folder = normalizePath(folderInputEl.value);
+          const verdict = validateExcludedFolder(
+            folder,
+            settings.excludedFolders,
+          );
+          if (verdict === "invalid") {
+            new Notice(
+              "Excluded folder path cannot be empty or the vault root",
+            );
+            return;
+          }
+          if (verdict === "ok") {
+            settings.excludedFolders.push(folder);
+            this.plugin.saveSettingsSafely();
+            folderInputEl.value = "";
+            this.renderExcludedFolders(excludedFoldersList);
+          }
+        });
+      });
+```
+
+Two arms for three verdicts. `"invalid"` raises a `Notice`; `"ok"` appends, saves, clears the
+input and re-renders; `"duplicate"` falls off the end of the handler and does nothing at all —
+no message, no cleared input, no redraw. This is the point where the linear reading of the code
+breaks down: the pure core computes a distinction that the shell discards, and you have to hold
+both files in mind to notice it. Filed below.
+
+### Live preview for the datetime format
+
+There is no validation of the moment.js format string, and that is a deliberate substitution —
+release 1.3.0 replaced a no-op validator with a preview that renders the user's format as they
+type. Showing the answer beats guessing at which format strings are legal.
+
+```bash
+sed -n '136,158p' src/settings.ts
 ```
 
 ```output
@@ -548,115 +817,83 @@ sed -n '136,157p' src/settings.ts
 
     datetimePreview = datetimeSetting.descEl.createDiv({
       text: `Preview: ${window.moment().format(settings.datetimeFormat)}`,
+    });
 ```
 
-`maxRecentFiles` is the second `blur`-validated field. It used to validate on `onChange`, which fought the user when they cleared the field to retype a new value — `Number("")` is `0`, which failed the `< 1` check on every keystroke of the clear. Moving validation to `blur` (matching `changelogPath`'s convention above) fixes that: the field only gets checked, clamped via `clampMaxRecentFiles`, and saved once the user is done editing.
+`datetimePreview` is declared before the `Setting` and assigned after it, because the preview
+element has to be created inside the setting's description element, which does not exist until
+the setting is built. The closure at line 151 reads a variable assigned at line 156 — safe only
+because `onChange` cannot fire until `display()` has returned. Filed below.
+
+## 8. The tests
+
+One test file, and it imports only from `changelog.ts`. That is not a coverage gap — it is the
+boundary the pure/shell split exists to create. `obsidian` ships type declarations and no
+JavaScript, so `main.ts` and `settings.ts` are untestable outside Obsidian by construction,
+which is the argument for keeping them as thin as they are.
 
 ```bash
-sed -n '160,182p' src/settings.ts
+grep -h 'describe(' src/changelog.test.ts
 ```
 
 ```output
-    new Setting(containerEl)
-      .setName("Max recent files")
-      .setDesc(
-        `Maximum number of recently edited files to include (1\u2013${MAX_RECENT_FILES})`,
-      )
-      .addText((text) => {
-        text.setValue(settings.maxRecentFiles.toString());
-
-        text.inputEl.addEventListener("blur", () => {
-          const numValue = Number(text.getValue());
-          if (Number.isNaN(numValue) || numValue < 1) {
-            text.setValue(settings.maxRecentFiles.toString());
-            new Notice(
-              `Max recent files must be between 1 and ${MAX_RECENT_FILES}`,
-            );
-            return;
-          }
-          const flooredValue = clampMaxRecentFiles(numValue);
-          settings.maxRecentFiles = flooredValue;
-          text.setValue(flooredValue.toString());
-          this.plugin.saveSettingsSafely();
-        });
-      });
+describe("filterAndSort", () => {
+describe("generateChangelog", () => {
+describe("clampMaxRecentFiles", () => {
+describe("normalizeLoadedSettings", () => {
+describe("isValidChangelogPath", () => {
+describe("validateExcludedFolder", () => {
 ```
 
-The remaining fields are simple toggles and an unconstrained trimmed-text field, plus the "add excluded folder" control that reuses `validateExcludedFolder` from `changelog.ts`:
+The two most instructive tests are the ones that encode a lesson learned. This one names the
+storage-format asymmetry from §3 directly in a comment:
 
 ```bash
-sed -n '184,243p' src/settings.ts
+sed -n '39,44p' src/changelog.test.ts
 ```
 
 ```output
-    new Setting(containerEl)
-      .setName("Use wiki-links")
-      .setDesc("Format filenames as wiki-links [[note]] instead of plain text")
-      .addToggle((toggle) =>
-        toggle.setValue(settings.useWikiLinks).onChange((value) => {
-          settings.useWikiLinks = value;
-          this.plugin.saveSettingsSafely();
-        }),
-      );
-
-    new Setting(containerEl)
-      .setName("Changelog heading")
-      .setDesc(
-        "Optional heading to prepend to the changelog, written literally (e.g., # Changelog). Leave empty for no heading.",
-      )
-      .addText((text) =>
-        text
-          .setPlaceholder("# Changelog")
-          .setValue(settings.changelogHeading)
-          .onChange((value) => {
-            settings.changelogHeading = value.trim();
-            this.plugin.saveSettingsSafely();
-          }),
-      );
-
-    new Setting(containerEl).setName("Excluded folders").setHeading();
-
-    const excludedFoldersList = containerEl.createDiv("excluded-folders-list");
-    this.renderExcludedFolders(excludedFoldersList);
-
-    let folderInputEl: HTMLInputElement;
-
-    new Setting(containerEl)
-      .setName("Add excluded folder")
-      .setDesc("Folders to exclude from the changelog")
-      .addText((text) => {
-        text.setPlaceholder("folder/path/");
-        folderInputEl = text.inputEl;
-        new PathSuggest(this.app, folderInputEl);
-      })
-      .addButton((button) => {
-        button.setButtonText("Add").onClick(() => {
-          const folder = normalizePath(folderInputEl.value);
-          const verdict = validateExcludedFolder(
-            folder,
-            settings.excludedFolders,
-          );
-          if (verdict === "invalid") {
-            new Notice(
-              "Excluded folder path cannot be empty or the vault root",
-            );
-            return;
-          }
-          if (verdict === "ok") {
-            settings.excludedFolders.push(folder);
-            this.plugin.saveSettingsSafely();
-            folderInputEl.value = "";
-            this.renderExcludedFolders(excludedFoldersList);
-          }
-        });
+  test("excludes folders saved without trailing slash", () => {
+    // normalizePath strips trailing slashes, so "Archive" is the shape
+    // the settings layer actually persists.
+    const result = filterAndSort(files, "Changelog.md", ["Archive"], 25);
+    expect(result.find((f) => f.path.startsWith("Archive/"))).toBeUndefined();
+  });
 ```
 
-## Build system
-
-`build.ts` uses Bun's native bundler directly (no webpack/esbuild wrapper): single entry point `src/main.ts` → `main.js`, CommonJS output, `obsidian`/`electron` marked external (Obsidian provides these at runtime — bundling them would bloat the plugin and risk API mismatches). Production builds are minified; watch mode adds inline sourcemaps and skips rebuilding when only test files change.
+And this one is the regression guard for the trailing slash:
 
 ```bash
-cat build.ts
+sed -n '65,82p' src/changelog.test.ts
+```
+
+```output
+  test("does not exclude folders that share a prefix", () => {
+    const filesWithPrefix = [
+      { path: "Notes/file.md", basename: "file", stat: { mtime: 100 } },
+      { path: "Notes2/file.md", basename: "file2", stat: { mtime: 200 } },
+      { path: "Notebook/file.md", basename: "file3", stat: { mtime: 300 } },
+    ];
+    const result = filterAndSort(
+      filesWithPrefix,
+      "Changelog.md",
+      ["Notes"],
+      25,
+    );
+    expect(result).toHaveLength(2);
+    expect(result.map((f) => f.path)).toEqual([
+      "Notebook/file.md",
+      "Notes2/file.md",
+    ]);
+  });
+```
+
+## 9. Build, check, release
+
+`build.ts` is a thin wrapper over Bun's bundler:
+
+```bash
+sed -n '1,14p' build.ts
 ```
 
 ```output
@@ -674,155 +911,97 @@ async function build() {
 
   if (!result.success) {
     console.error("Build failed");
-    for (const message of result.logs) console.error(message);
-    if (!isWatch) process.exit(1);
-    return;
-  }
-
-  console.log(
-    `Built main.js (${(result.outputs[0].size / 1024).toFixed(1)} KB)`,
-  );
-}
-
-await build();
-
-if (isWatch) {
-  console.log("Watching src/ for changes...");
-  const { watch } = await import("node:fs");
-  let timeout: ReturnType<typeof setTimeout> | null = null;
-
-  watch("src", { recursive: true }, (_event, filename) => {
-    if (!filename?.endsWith(".ts")) return;
-    if (filename.includes(".test.")) return;
-    if (timeout) clearTimeout(timeout);
-    timeout = setTimeout(() => {
-      console.log(`\nRebuilding (${filename} changed)...`);
-      build().catch((err) => {
-        console.error("Rebuild failed:", err);
-      });
-    }, 100);
-  });
-}
-
-export {};
 ```
 
-## Tests
+`obsidian` and `electron` are external and must never be bundled — Obsidian provides both at
+runtime. Output is CommonJS, minified in production, with a linked sourcemap only in watch mode.
+Watch mode additionally debounces its own rebuilds by 100 ms and ignores `.test.` files.
 
-All 30 tests live in `src/changelog.test.ts` and exercise only the pure functions in `changelog.ts` — no Obsidian mocking required. The `normalizeLoadedSettings` suite is the largest, since it now covers both the original normalize/clamp/trim behavior and the type-guard fallback behavior added for malformed persisted settings:
+The one non-obvious thing about this repository is that **`main.js` is committed**, because
+Obsidian ships the built bundle rather than building from source. That makes a stale artifact a
+real hazard: a dependency bump that skips the rebuild would ship old code. CI closes it:
 
 ```bash
-grep -c 'test(' src/changelog.test.ts
+sed -n '15,25p' .github/workflows/main.yml
 ```
 
 ```output
-30
+        with:
+          bun-version: latest
+      - run: bun install
+      - run: bun audit --audit-level=critical
+      # `build` is check + bundle. The diff then fails the PR when the committed
+      # main.js does not match a fresh build — Obsidian ships the committed
+      # bundle, so a dependency bump that skips the rebuild must not merge.
+      # bun is deliberately unpinned, so a bun release that shifts bundler
+      # output trips this too. The fix is the same either way: rebuild and
+      # commit main.js.
+      - run: bun run build
 ```
 
+`bun run build` runs `check` (typecheck + Biome) and then bundles; `git diff --exit-code main.js`
+then fails the pull request if the freshly built bundle differs from the committed one. The
+workflow comment notes that `bun` is deliberately left unpinned so that a bundler-output change
+trips the same wire, and the fix is the same either way — rebuild and commit `main.js`.
+
+Releasing is a version triple that must move together. `version-bump.ts` drives it from
+`package.json`:
+
 ```bash
-grep -n 'describe(\|test(' src/changelog.test.ts
+sed -n '1,14p' version-bump.ts
 ```
 
 ```output
-16:describe("filterAndSort", () => {
-29:  test("excludes the changelog file", () => {
-34:  test("excludes files in excluded folders", () => {
-39:  test("excludes folders saved without trailing slash", () => {
-46:  test("sorts by mtime descending", () => {
-55:  test("limits to maxRecentFiles", () => {
-60:  test("returns all files when maxRecentFiles exceeds file count", () => {
-65:  test("does not exclude folders that share a prefix", () => {
-85:describe("generateChangelog", () => {
-99:  test("generates changelog without heading", () => {
-112:  test("generates changelog without wiki-links", () => {
-125:  test("generates changelog with heading", () => {
-136:  test("generates empty changelog", () => {
-148:describe("clampMaxRecentFiles", () => {
-149:  test("returns a valid in-range integer as-is", () => {
-155:  test("floors floats", () => {
-159:  test("clamps below 1 to 1", () => {
-165:  test("clamps above the maximum", () => {
-169:  test("accepts numeric strings", () => {
-173:  test("falls back to the default for non-finite input", () => {
-181:describe("normalizeLoadedSettings", () => {
-184:  test("returns defaults for null/undefined data", () => {
-191:  test("drops unknown keys", () => {
-200:  test("normalizes changelogPath and excludedFolders", () => {
-213:  test("clamps invalid maxRecentFiles", () => {
-227:  test("trims the changelog heading", () => {
-235:  test("falls back to defaults when known keys have the wrong type", () => {
-251:  test("falls back for excludedFolders when it contains non-string entries", () => {
-259:  test("falls back to defaults when boolean keys have the wrong type", () => {
-269:describe("isValidChangelogPath", () => {
-270:  test("accepts a markdown path", () => {
-274:  test("rejects non-markdown paths", () => {
-280:describe("validateExcludedFolder", () => {
-281:  test("accepts a new folder", () => {
-285:  test("rejects empty input and the vault root", () => {
-290:  test("flags an already-listed folder as duplicate", () => {
-```
-
-## Styling
-
-`styles.css` is scoped to the excluded-folders list: a flex row per entry with a subtle background, and the remove button styled as a muted "✕" that turns red (`--text-error`) on hover — visual cues that pair with the `aria-label` added in `renderExcludedFolders` for non-visual affordance.
-
-```bash
-cat styles.css
-```
-
-```output
-.excluded-folders-list {
-	margin-bottom: 1em;
+const targetVersion = process.env.npm_package_version;
+if (!targetVersion) {
+  throw new Error("No version found in package.json");
 }
 
-.excluded-folder-item {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	background-color: var(--background-secondary);
-	border-radius: 4px;
-	padding: 4px 8px;
-	margin-bottom: 6px;
-}
+// Update manifest.json
+const manifest = await Bun.file("manifest.json").json();
+const { minAppVersion } = manifest;
+manifest.version = targetVersion;
+await Bun.write("manifest.json", `${JSON.stringify(manifest, null, 2)}\n`);
 
-.excluded-folder-remove {
-	cursor: pointer;
-	border: none;
-	background: transparent;
-	color: var(--text-muted);
-	padding: 0 4px;
-	font-size: 14px;
-}
-
-.excluded-folder-remove:hover {
-	color: var(--text-error);
-}
+// Update versions.json
+const versions = await Bun.file("versions.json").json();
+versions[targetVersion] = minAppVersion;
 ```
 
-## Development commands
+The subtlety is the ordering: `minAppVersion` is read out of the manifest *before* the version
+field is overwritten, then recorded in `versions.json` against the new version. That map is how
+Obsidian's plugin browser decides which release to offer an older client — get it wrong and
+users on an unsupported Obsidian are offered a build that will not run.
 
-```bash
-sed -n '/^## Development Commands/I,/^```/p' CLAUDE.md | sed -n '3,13p'
-```
+Pushing a semver tag then triggers `release.yml`, which reinstalls, tests, builds, attests build
+provenance for `main.js`/`manifest.json`/`styles.css`, and attaches those three files to a
+GitHub release. `CLAUDE.md` directs you to the `obsidian-release-gate` and
+`obsidian-release-ship` skills rather than tagging by hand.
 
-````output
-```bash
-````
+## Recap
 
-```bash
-sed -n '14,24p' CLAUDE.md
-```
+The whole plugin is one line of pseudocode —
+`write(changelogPath, render(sort(filter(allMarkdownFiles))))` — and everything else is
+protecting it: guards so it does not trigger itself, normalization so its inputs are always
+well-formed, a debouncer so it does not run on every keystroke, and a committed-artifact check
+so the version that ships is the version that was reviewed.
 
-```output
-bun install              # Install dependencies
-bun run dev              # Watch mode with auto-rebuild
-bun run build            # Production build (runs check first)
-bun run check            # typecheck + biome check
-bun run typecheck        # tsc --noEmit
-bun run lint:fix         # Auto-fix lint and format
-bun run version          # Sync package.json version → manifest.json + versions.json
-bun test                 # Run all tests
-bun test src/changelog.test.ts         # Run a single test file
-bun test -t "pattern"                  # Run tests matching a name pattern
-bun run deploy           # Copy main.js/manifest.json/styles.css into the local notes vault
-```
+## Findings
+
+Two things surfaced while tracing the code linearly that a reader of this document should not
+have to rediscover. Both are filed in full under `.issues/`.
+
+**Related existing findings.** A `code-theory` pass over the same code filed six findings before
+this one, and three of them are things the narrative above also had to point at: the
+`"duplicate"` verdict the settings UI discards (§7), the fact that nothing but an `.md` check
+stands between `changelogPath` and an existing note (§5, §7), and the shared `PathSuggest` list
+that offers every note in the vault to both fields (§7). They are not re-filed here. See
+`THEORY.md` for that pass's index.
+
+| #   | Severity | Issue                                                       | Primary location                            |
+| --- | -------- | ----------------------------------------------------------- | ------------------------------------------- |
+| 1   | medium   | `write-failure-detail-is-discarded-before-the-user-sees-it` | `src/main.ts:22-24`, `35-37`, `77-80`       |
+| 2   | low      | `datetime-preview-closure-reads-a-variable-assigned-after-it` | `src/settings.ts:136`, `151`, `156-158`   |
+
+**Total: 2 issues (0 critical, 0 high, 1 medium, 1 low)**
+
