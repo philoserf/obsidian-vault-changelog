@@ -141,24 +141,47 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         new PathSuggest(this.app, text.inputEl);
       });
 
-    let datetimePreview: HTMLElement;
+    // `| null` plus the guard in setDatetimePreview, rather than a bare
+    // definite-assignment. The assignment genuinely cannot precede the closure
+    // that reads it -- descEl does not exist until the Setting is constructed
+    // -- and TypeScript's definite-assignment analysis does not reach into
+    // closures, so it raised nothing here and would raise nothing if a later
+    // edit broke the ordering. One guard makes the assumption checkable.
+    let datetimePreview: HTMLElement | null = null;
+
+    const setDatetimePreview = (format: string): void => {
+      if (!datetimePreview) return;
+      datetimePreview.textContent = `Preview: ${window.moment().format(format)}`;
+    };
 
     const datetimeSetting = new Setting(containerEl)
       .setName("Datetime format")
       .setDesc("Moment.js format string")
-      .addText((text) =>
+      .addText((text) => {
         text
           .setPlaceholder("YYYY-MM-DD[T]HHmm")
           .setValue(settings.datetimeFormat)
+          // Preview only -- no setValue, no save. onChange fires per keystroke,
+          // and an empty field is a transient state on the way to a new format,
+          // since select-all-then-retype is how a value gets replaced. Writing
+          // the default back into the input here moved the caret mid-edit and
+          // persisted that default over the user's format before they had typed
+          // the first character of its replacement. #175 was this same bug in
+          // the field below, fixed the same way.
           .onChange((format) => {
-            const nextFormat = format || DEFAULT_SETTINGS.datetimeFormat;
-            if (!format) {
-              text.setValue(nextFormat);
-            }
-            datetimePreview.textContent = `Preview: ${window.moment().format(nextFormat)}`;
-            this.plugin.updateSettings({ datetimeFormat: nextFormat });
-          }),
-      );
+            setDatetimePreview(format || DEFAULT_SETTINGS.datetimeFormat);
+          });
+
+        // Commit on blur, matching both sibling text fields. Blur is the point
+        // the user has finished, so substituting the default for a field left
+        // empty is a decision rather than an interruption.
+        text.inputEl.addEventListener("blur", () => {
+          const nextFormat = text.getValue() || DEFAULT_SETTINGS.datetimeFormat;
+          text.setValue(nextFormat);
+          setDatetimePreview(nextFormat);
+          this.plugin.updateSettings({ datetimeFormat: nextFormat });
+        });
+      });
 
     datetimePreview = datetimeSetting.descEl.createDiv({
       text: `Preview: ${window.moment().format(settings.datetimeFormat)}`,
@@ -230,21 +253,36 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           const existing = this.plugin.settings.excludedFolders;
           const folder = normalizePath(folderInputEl.value);
           const verdict = validateExcludedFolder(folder, existing);
-          if (verdict === "invalid") {
-            new Notice(
-              "Excluded folder path cannot be empty or the vault root",
-            );
-            return;
-          }
-          if (verdict === "ok") {
-            // Replaced, not pushed: a push into the shared array would
-            // survive updateSettings restoring the previous object, so the
-            // rollback would leave the folder in memory but not on disk.
-            this.plugin.updateSettings({
-              excludedFolders: [...existing, folder],
-            });
-            folderInputEl.value = "";
-            this.renderExcludedFolders(excludedFoldersList);
+          // Exhaustive, so a fourth verdict cannot be added without the
+          // compiler naming this call site. Falling off the end is exactly how
+          // "duplicate" went unhandled: no notice, input not cleared, list not
+          // re-rendered -- indistinguishable from a dead button.
+          switch (verdict) {
+            case "invalid":
+              new Notice(
+                "Excluded folder path cannot be empty or the vault root",
+              );
+              return;
+            case "duplicate":
+              new Notice(`"${folder}" is already excluded`);
+              folderInputEl.value = "";
+              return;
+            case "ok":
+              // Replaced, not pushed: a push into the shared array would
+              // survive updateSettings restoring the previous object, so the
+              // rollback would leave the folder in memory but not on disk.
+              this.plugin.updateSettings({
+                excludedFolders: [...existing, folder],
+              });
+              folderInputEl.value = "";
+              this.renderExcludedFolders(excludedFoldersList);
+              return;
+            default: {
+              const unhandled: never = verdict;
+              throw new Error(
+                `Unhandled excluded-folder verdict: ${String(unhandled)}`,
+              );
+            }
           }
         });
       });
