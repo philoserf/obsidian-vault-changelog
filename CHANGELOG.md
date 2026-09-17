@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.7.0
+
+Settings are validated at two trust boundaries — `data.json` at load and the settings tab at
+edit time — and for most of this plugin's history each one validated independently. They had
+drifted. This release makes every settings rule a single function that both boundaries call,
+and fixes the defects the split had been producing.
+
+### Fixed
+
+- **Clearing the "Datetime format" field to retype no longer overwrites your saved format.** The field saved on every keystroke, so selecting all and deleting — the ordinary way to replace a value — wrote the default into the input and persisted it before you had typed the first character of the replacement. The live preview still updates as you type; the save now happens when you leave the field (#199)
+- **Adding a folder that is already excluded now says so.** The "Add" button computed a "duplicate" verdict and then discarded it: no message, the input was not cleared, the list did not redraw. It was indistinguishable from a dead button (#203)
+- **A settings change that fails to save no longer leaves the plugin running on it.** The value was applied in memory before the write was attempted and nothing put it back, so the plugin kept behaving as though the save had worked until the next restart silently reverted it. The failure message now also says why it failed (#206, #215)
+- **A corrupt `maxRecentFiles` no longer truncates the changelog to a single entry.** A `data.json` holding `null`, `""`, `[]` or `false` for that setting produced a one-line changelog — quiet enough to read as "the plugin stopped working" rather than as a settings problem. These now fall back to the default of 25 (#209)
+- **"Max recent files" now tells you whenever it had to change your input.** Entering `1000` or `25.9` silently rewrote the field while `0` and `abc` produced a message naming a range the field did not actually enforce (#210)
+- Excluded folders that differ only in a trailing slash no longer appear as two identical rows whose remove buttons both delete the first one (#211)
+- An excluded-folder path that normalizes to the vault root is now rejected in every spelling. One of them slipped through and became a row that excluded nothing, permanently (#204)
+
+### Changed
+
+- **Settings loaded from `data.json` are now held to the same rules as settings typed into the settings tab.** Previously the settings tab refused a "Changelog path" without a `.md` extension while the loader accepted one, so a vault could be writing to a file its own settings tab would not display. The same split applied to an empty datetime format and to excluded folders (#213)
+- Invalid input typed into a settings field still reverts to the value you had, rather than resetting to the default — that behaviour is unchanged and is now explicit rather than incidental (#213)
+
+### Internal
+
+- Each setting's rule is one exported function in the pure layer, called by both the loader and the settings tab, with a trailing fallback that lets the two boundaries differ in what a rejected value becomes (#213)
+- `updateSettings` is the one commit path for a settings change, and the one place a failed write can roll back. `saveSettings` and `saveSettingsSafely` are gone (#215, #216)
+- `normalizeLoadedSettings` builds its result once instead of filtering persisted data and then walking it three more times to repair it. Dropping unknown keys and resisting a `__proto__` key are now properties of the construction rather than of guards (#208)
+- `isValidChangelogPath` folded into `coerceChangelogPath`; it was `endsWith(".md")` behind an export, an import and three tests (#207)
+- The excluded-folder verdict is now handled by an exhaustive switch, so a fourth verdict cannot be added without the compiler naming the call site (#203)
+- `datetimePreview` is null-guarded rather than relying on an unstated ordering assumption the compiler could not see (#200)
+- `THEORY.md` and `WALKTHROUGH.md` regenerated. Walkthrough snippets are now sliced from source programmatically and marked `prettier-ignore`, because prettier reformats code inside fenced blocks — which had silently dated two snippets in the previous edition
+- Test suite grown from 47 to 65
+
+### Upgrading
+
+Most vaults are unaffected. If your `data.json` was hand-edited, or migrated from an old enough version, three settings may load differently than before — correctly, but differently:
+
+- A **"Changelog path" without a `.md` extension** now falls back to `Changelog.md`. The plugin had been writing to the extensionless file while the settings tab refused to display that value, so there was no way to re-enter the path the plugin was actually using.
+- An **empty "Datetime format"** now falls back to the default. An empty format string does not fail — it silently produces a full ISO-8601 timestamp on every row.
+- An **excluded folder that is the vault root**, or a duplicate of another entry, is dropped. Both were inert rows that excluded nothing.
+
+Settings you change through the settings tab are not affected by any of this.
+
 ## 1.6.0
 
 ### Changed
