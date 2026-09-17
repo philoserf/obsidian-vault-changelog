@@ -49,7 +49,21 @@ export default class ChangelogPlugin extends Plugin {
     };
     this.registerEvent(this.app.vault.on("modify", handler));
     this.registerEvent(this.app.vault.on("delete", handler));
-    this.registerEvent(this.app.vault.on("rename", handler));
+    // `rename` is the one event whose identity check `handler` cannot make:
+    // it alone carries `oldPath`, and that is the only value that can say the
+    // renamed file *was* the changelog. Without it the guard compares against
+    // a stale path, the changelog lists itself, and the next write recreates
+    // a ghost at the old name.
+    this.registerEvent(
+      this.app.vault.on("rename", (file, oldPath) => {
+        if (oldPath === this.settings.changelogPath && file instanceof TFile) {
+          this.settings.changelogPath = file.path;
+          this.saveSettingsSafely();
+          return; // the changelog moved; nothing to regenerate
+        }
+        handler(file);
+      }),
+    );
   }
 
   async updateChangelog(): Promise<void> {
