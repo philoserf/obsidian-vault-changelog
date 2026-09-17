@@ -429,6 +429,15 @@ describe("validateExcludedFolder", () => {
     expect(validateExcludedFolder("Archive", [])).toBe("ok");
   });
 
+  // Written against post-normalization shapes, which is what the parameter
+  // name and the doc comment promise. Which of these normalizePath actually
+  // returns for empty input is version-dependent, so all four are rejected.
+  test("rejects every spelling of the vault root", () => {
+    for (const marker of ["", ".", "./", "/", "  "]) {
+      expect(validateExcludedFolder(marker, [])).toBe("invalid");
+    }
+  });
+
   test("rejects empty input and the vault root", () => {
     expect(validateExcludedFolder("", [])).toBe("invalid");
     expect(validateExcludedFolder(".", [])).toBe("invalid");

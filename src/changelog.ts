@@ -142,15 +142,27 @@ export function isPluginGeneratedChangelog(
 export type ExcludedFolderVerdict = "ok" | "invalid" | "duplicate";
 
 /**
+ * Every shape a normalizer can hand back for "no folder at all". The guard
+ * below is reached only with already-normalized input, and Obsidian's
+ * normalizePath maps an empty or separator-only string onto one of these
+ * rather than onto "" -- which of them is version-dependent, so the set
+ * covers all four instead of betting on one. A root marker that survives
+ * into excludedFolders is not corrupting, just permanently inert:
+ * filterAndSort would test `path.startsWith("./")`, and no vault path
+ * begins that way, so the row excludes nothing and never stops doing so.
+ */
+const ROOT_MARKERS = new Set(["", ".", "./", "/"]);
+
+/**
  * Validate a normalized folder path before adding it to excludedFolders:
- * empty input and the vault root are invalid; an already-listed folder is
- * a duplicate.
+ * the vault root in any of its spellings is invalid; an already-listed
+ * folder is a duplicate.
  */
 export function validateExcludedFolder(
   normalizedFolder: string,
   existing: string[],
 ): ExcludedFolderVerdict {
-  if (!normalizedFolder || normalizedFolder === ".") return "invalid";
+  if (ROOT_MARKERS.has(normalizedFolder.trim())) return "invalid";
   if (existing.includes(normalizedFolder)) return "duplicate";
   return "ok";
 }
