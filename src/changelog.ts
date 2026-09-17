@@ -23,7 +23,14 @@ export const MAX_RECENT_FILES = 500;
 /**
  * The one authoritative clamping rule for maxRecentFiles: floor to an
  * integer and clamp to [1, MAX_RECENT_FILES]; anything that is not a number
- * falls back to the default. Load-time and the settings UI both call this.
+ * falls back. Load-time and the settings UI both call this.
+ *
+ * `fallback` is what a value that is not a number at all becomes. The loader
+ * omits it and gets the default, because at load there is no prior value; the
+ * settings tab passes the value the plugin is currently running on, so a typo
+ * reverts rather than resetting the setting. Note this is the *non-numeric*
+ * path only -- an out-of-range number still clamps, which is why 0 becomes 1
+ * and 1000 becomes 500 at both boundaries.
  *
  * Non-numbers are rejected *before* coercion rather than after. `Number()`
  * maps null, "", "   ", [] and false to a perfectly finite 0, which the clamp
@@ -32,26 +39,101 @@ export const MAX_RECENT_FILES = 500;
  * problem. Numeric strings stay accepted because the settings tab hands this
  * function the raw contents of a text field.
  */
-export function clampMaxRecentFiles(value: unknown): number {
+export function clampMaxRecentFiles(
+  value: unknown,
+  fallback: number = DEFAULT_SETTINGS.maxRecentFiles,
+): number {
   const raw =
     typeof value === "number"
       ? value
       : typeof value === "string" && value.trim() !== ""
         ? Number(value)
         : Number.NaN;
-  if (!Number.isFinite(raw)) return DEFAULT_SETTINGS.maxRecentFiles;
+  if (!Number.isFinite(raw)) return fallback;
   return Math.max(1, Math.min(Math.floor(raw), MAX_RECENT_FILES));
 }
 
 /**
- * Turn persisted data into valid settings: one expression per field, each
- * reading its persisted value by name and falling back to the default when
- * the runtime type doesn't match (which is what guards against a hand-edited
- * or corrupt data.json). Paths are normalized so duplicate detection in the
- * settings UI stays consistent, maxRecentFiles is clamped, and the heading is
- * trimmed so renderChangelog's "\n\n" spacing stays predictable. `normalize`
- * is injected (Obsidian's normalizePath in production) to keep this module
- * Obsidian-free.
+ * Authoritative rule for changelogPath: the changelog must be a markdown
+ * file. Both boundaries call this, which is the whole point -- the settings
+ * tab has refused a non-`.md` path since #142, and the loader never has, so
+ * a persisted `"Notes"` was a value the plugin ran on and the settings tab
+ * would not display.
+ *
+ * `fallback` is the settings tab's current value and the loader's default,
+ * so a typo in the field reverts to what the user had rather than resetting
+ * the setting to `Changelog.md`.
+ */
+export function coerceChangelogPath(
+  value: unknown,
+  normalize: (path: string) => string,
+  fallback: string = DEFAULT_SETTINGS.changelogPath,
+): string {
+  if (typeof value !== "string") return fallback;
+  const normalized = normalize(value);
+  return normalized.endsWith(".md") ? normalized : fallback;
+}
+
+/**
+ * Authoritative rule for datetimeFormat: an empty format is not a format.
+ * The failure it prevents is silent rather than loud -- moment's `format("")`
+ * falls through to ISO-8601, so an empty persisted format turns every row
+ * into a full timestamp instead of raising anything.
+ *
+ * This is the one rule the settings tab calls *without* passing its current
+ * value. Clearing the field and blurring is the only reset-to-default the
+ * field offers, and it has always landed on the default; handing it the
+ * current value would quietly take that away.
+ */
+export function coerceDatetimeFormat(
+  value: unknown,
+  fallback: string = DEFAULT_SETTINGS.datetimeFormat,
+): string {
+  return typeof value === "string" && value.trim() !== "" ? value : fallback;
+}
+
+/**
+ * Authoritative rule for excludedFolders: normalize each entry, then put it
+ * through the same verdict the Add button uses. Root markers and duplicates
+ * both fall out of that one pass, because the verdict is taken against the
+ * accumulating result rather than against the input -- which is what makes
+ * `["Archive/", "Archive"]` collapse to one row instead of two identical
+ * ones whose remove buttons both delete the first.
+ *
+ * An array carrying a non-string is corrupt rather than partly usable, so
+ * the whole field falls back. That is the all-or-nothing rule the scalar
+ * guards apply, and the suite pins it.
+ */
+export function coerceExcludedFolders(
+  value: unknown,
+  normalize: (path: string) => string,
+  fallback: string[] = DEFAULT_SETTINGS.excludedFolders,
+): string[] {
+  if (
+    !Array.isArray(value) ||
+    !value.every((folder) => typeof folder === "string")
+  ) {
+    return [...fallback];
+  }
+  const folders: string[] = [];
+  for (const entry of value as string[]) {
+    const folder = normalize(entry);
+    if (validateExcludedFolder(folder, folders) === "ok") folders.push(folder);
+  }
+  return folders;
+}
+
+/**
+ * Turn persisted data into valid settings: one rule call per field. Disk is
+ * one of the two trust boundaries and the settings tab is the other, and
+ * every rule above is called by both -- which is the property this function
+ * exists to hold up. It passes no `fallback` anywhere, because at load there
+ * is no prior value to revert to; the settings tab passes one.
+ *
+ * The two fields with no rule to share are the booleans, which a typed toggle
+ * cannot get wrong, and the heading, whose whole rule is `.trim()`.
+ * `normalize` is injected (Obsidian's normalizePath in production) to keep
+ * this module Obsidian-free.
  *
  * Unknown keys cannot survive, and no filter is needed to stop them: the
  * result is *built* rather than patched, so nothing from `loaded` is spread
@@ -72,36 +154,18 @@ export function normalizeLoadedSettings(
   const bool = (value: unknown, fallback: boolean): boolean =>
     typeof value === "boolean" ? value : fallback;
 
-  // An array carrying a non-string is corrupt rather than partly usable, so
-  // the whole field falls back -- the same all-or-nothing rule the scalar
-  // guards apply. Mapping afterwards also means the default array is copied
-  // rather than aliased, which matters because the settings UI mutates this
-  // field in place.
-  const folders =
-    Array.isArray(loaded.excludedFolders) &&
-    loaded.excludedFolders.every((folder) => typeof folder === "string")
-      ? (loaded.excludedFolders as string[])
-      : DEFAULT_SETTINGS.excludedFolders;
-
   return {
     autoUpdate: bool(loaded.autoUpdate, DEFAULT_SETTINGS.autoUpdate),
-    changelogPath: normalize(
-      str(loaded.changelogPath, DEFAULT_SETTINGS.changelogPath),
-    ),
-    datetimeFormat: str(loaded.datetimeFormat, DEFAULT_SETTINGS.datetimeFormat),
+    changelogPath: coerceChangelogPath(loaded.changelogPath, normalize),
+    datetimeFormat: coerceDatetimeFormat(loaded.datetimeFormat),
     maxRecentFiles: clampMaxRecentFiles(loaded.maxRecentFiles),
-    excludedFolders: folders.map(normalize),
+    excludedFolders: coerceExcludedFolders(loaded.excludedFolders, normalize),
     useWikiLinks: bool(loaded.useWikiLinks, DEFAULT_SETTINGS.useWikiLinks),
     changelogHeading: str(
       loaded.changelogHeading,
       DEFAULT_SETTINGS.changelogHeading,
     ).trim(),
   };
-}
-
-/** The changelog must be a markdown file; paths are validated post-normalize. */
-export function isValidChangelogPath(normalizedPath: string): boolean {
-  return normalizedPath.endsWith(".md");
 }
 
 /** An entry line in the shape renderChangelog emits: "- <time> · <name>". */
