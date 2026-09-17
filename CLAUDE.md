@@ -35,7 +35,7 @@ bun run deploy           # Copy main.js/manifest.json/styles.css into a local va
 
 The plugin has an intentional split between pure logic and Obsidian integration:
 
-- `src/changelog.ts` — **pure functions** (`filterAndSort`, `generateChangelog`, `normalizeLoadedSettings`, `clampMaxRecentFiles`, `isValidChangelogPath`, `validateExcludedFolder`) with no Obsidian imports. All unit tests target this file. Accepts a `TimeFormatter` callback so tests don't need `window.moment`; `normalizeLoadedSettings` takes an injected path normalizer for the same reason.
+- `src/changelog.ts` — **pure functions** (`filterAndSort`, `renderChangelog`, `normalizeLoadedSettings`, `clampMaxRecentFiles`, `isValidChangelogPath`, `isPluginGeneratedChangelog`, `validateExcludedFolder`) with no Obsidian imports. All unit tests target this file. `renderChangelog` is the one render entry point: it takes the whole `ChangelogSettings` rather than six fields positionally, and calls `filterAndSort` itself. Obsidian is kept out by injection — a `TimeFormatter` callback so tests don't need `window.moment`, a `LinkTextResolver` (production passes `MetadataCache.fileToLinktext`), and an injected path normalizer for `normalizeLoadedSettings`.
 - `src/main.ts` — `ChangelogPlugin` extends `Plugin`. Wires up the command, vault event handlers (`modify`/`delete`/`rename`), and I/O. Auto-update uses a 200ms `debounce` and skips edits to the changelog file itself (avoids self-triggering loops).
 - `src/settings.ts` — `ChangelogSettingsTab` + `PathSuggest`. Path suggestions cache vault folder/file listings per suggester instance to avoid per-keystroke scanning.
 
@@ -45,7 +45,11 @@ The plugin has an intentional split between pure logic and Obsidian integration:
 
 ### Writing the changelog
 
-`writeToFile` tolerates a TOCTOU race: if `vault.create` throws because a concurrent event created the file, it falls back to `getAbstractFileByPath` rather than erroring. Preserve this behavior when editing.
+`updateChangelog` does the whole write, and two behaviors in it are load-bearing.
+
+It tolerates a TOCTOU race: if `vault.create` throws because a concurrent event created the file, it falls back to `getAbstractFileByPath` rather than erroring, attaching the original error as `cause`. Preserve this when editing.
+
+It also refuses to overwrite a file that does not look plugin-generated, via `isPluginGeneratedChangelog`. The plugin replaces the file at `changelogPath` wholesale and every note in the vault satisfies the only other check (`.md`), so that predicate is what enforces the ownership invariant. Note its deliberate tolerance: the heading slot accepts *whatever* heading is currently in the file, so changing `changelogHeading` cannot lock the plugin out of the changelog it wrote.
 
 ### Build system
 
