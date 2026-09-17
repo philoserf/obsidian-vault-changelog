@@ -62,8 +62,7 @@ export default class ChangelogPlugin extends Plugin {
     this.registerEvent(
       this.app.vault.on("rename", (file, oldPath) => {
         if (oldPath === this.settings.changelogPath && file instanceof TFile) {
-          this.settings.changelogPath = file.path;
-          this.saveSettingsSafely();
+          this.updateSettings({ changelogPath: file.path });
           return; // the changelog moved; nothing to regenerate
         }
         handler(file);
@@ -142,13 +141,36 @@ export default class ChangelogPlugin extends Plugin {
     this.debouncedVaultChange.cancel();
   }
 
-  async saveSettings(): Promise<void> {
-    await this.saveData(this.settings);
-  }
-
-  saveSettingsSafely(): void {
-    this.saveSettings().catch(() => {
-      new Notice("Failed to save changelog settings");
+  /**
+   * The one place a setting changes. Callers hand over a patch instead of
+   * mutating `this.settings`, and that is what makes the rollback possible:
+   * the previous object is still intact when the write fails, so memory can
+   * be put back into agreement with disk. Assigning first and persisting
+   * afterwards -- the shape this replaces -- left nowhere to keep the old
+   * value, so a failed write showed a notice and then went on running on a
+   * setting that was never saved, until the next restart silently reverted
+   * it.
+   *
+   * It trusts the values it is given. Coercion belongs at the two boundaries
+   * that have a fallback to offer -- `normalizeLoadedSettings` for disk, the
+   * settings handlers for the user -- and re-validating here would run every
+   * rule twice per edit with no way to say which result was stored. Do not
+   * add a defensive re-validation.
+   *
+   * Deliberately free of side effects. Re-registering vault listeners when
+   * `autoUpdate` flips is exactly the leak behind #97 and #124; the handlers
+   * are registered once in `onload` and read `this.settings.autoUpdate`
+   * inside the guard, and a commit path is an inviting place to break that.
+   */
+  updateSettings(patch: Partial<ChangelogSettings>): void {
+    const previous = this.settings;
+    this.settings = { ...previous, ...patch };
+    this.saveData(this.settings).catch((err: unknown) => {
+      this.settings = previous;
+      console.error("Vault Changelog: failed to save settings", err);
+      new Notice(
+        `Failed to save changelog settings: ${err instanceof Error ? err.message : String(err)}`,
+      );
     });
   }
 }

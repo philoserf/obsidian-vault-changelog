@@ -73,7 +73,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       return;
     }
 
-    this.plugin.settings.excludedFolders.forEach((folder) => {
+    this.plugin.settings.excludedFolders.forEach((folder, index) => {
       const folderDiv = container.createDiv("excluded-folder-item");
       folderDiv.createSpan({ text: folder });
 
@@ -84,29 +84,38 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       });
 
       removeButton.addEventListener("click", () => {
-        const index = this.plugin.settings.excludedFolders.indexOf(folder);
-        if (index > -1) {
-          this.plugin.settings.excludedFolders.splice(index, 1);
-          this.plugin.saveSettingsSafely();
-          this.renderExcludedFolders(container);
-        }
+        // Remove by position, not by value. `indexOf` removed the first row
+        // matching the text, so with two rows reading the same folder both
+        // buttons deleted the first one. Replacing the array rather than
+        // splicing it is also what makes updateSettings' rollback correct --
+        // a mutation of the shared array survives restoring the object.
+        this.plugin.updateSettings({
+          excludedFolders: this.plugin.settings.excludedFolders.filter(
+            (_, i) => i !== index,
+          ),
+        });
+        this.renderExcludedFolders(container);
       });
     });
   }
 
   display(): void {
     const { containerEl } = this;
-    const { settings } = this.plugin;
 
+    // No `const { settings } = this.plugin` here. updateSettings replaces the
+    // settings object rather than mutating it, so a binding captured once at
+    // display time would be a snapshot that goes stale on the first edit and
+    // feeds pre-change values back into the next one. Handlers read
+    // `this.plugin.settings` at event time instead.
     containerEl.empty();
+    const { settings } = this.plugin; // initial values for the controls only
 
     new Setting(containerEl)
       .setName("Auto update")
       .setDesc("Automatically update changelog on vault changes")
       .addToggle((toggle) =>
         toggle.setValue(settings.autoUpdate).onChange((value) => {
-          settings.autoUpdate = value;
-          this.plugin.saveSettingsSafely();
+          this.plugin.updateSettings({ autoUpdate: value });
         }),
       );
 
@@ -121,12 +130,12 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         text.inputEl.addEventListener("blur", () => {
           const normalized = normalizePath(text.getValue());
           if (!isValidChangelogPath(normalized)) {
-            text.setValue(settings.changelogPath);
+            text.setValue(this.plugin.settings.changelogPath);
             new Notice("Changelog path must end with .md");
             return;
           }
-          settings.changelogPath = normalized;
-          this.plugin.saveSettingsSafely();
+          text.setValue(normalized);
+          this.plugin.updateSettings({ changelogPath: normalized });
         });
 
         new PathSuggest(this.app, text.inputEl);
@@ -146,9 +155,8 @@ export class ChangelogSettingsTab extends PluginSettingTab {
             if (!format) {
               text.setValue(nextFormat);
             }
-            settings.datetimeFormat = nextFormat;
             datetimePreview.textContent = `Preview: ${window.moment().format(nextFormat)}`;
-            this.plugin.saveSettingsSafely();
+            this.plugin.updateSettings({ datetimeFormat: nextFormat });
           }),
       );
 
@@ -167,16 +175,15 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         text.inputEl.addEventListener("blur", () => {
           const numValue = Number(text.getValue());
           if (Number.isNaN(numValue) || numValue < 1) {
-            text.setValue(settings.maxRecentFiles.toString());
+            text.setValue(this.plugin.settings.maxRecentFiles.toString());
             new Notice(
               `Max recent files must be between 1 and ${MAX_RECENT_FILES}`,
             );
             return;
           }
           const flooredValue = clampMaxRecentFiles(numValue);
-          settings.maxRecentFiles = flooredValue;
           text.setValue(flooredValue.toString());
-          this.plugin.saveSettingsSafely();
+          this.plugin.updateSettings({ maxRecentFiles: flooredValue });
         });
       });
 
@@ -185,8 +192,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       .setDesc("Format filenames as wiki-links [[note]] instead of plain text")
       .addToggle((toggle) =>
         toggle.setValue(settings.useWikiLinks).onChange((value) => {
-          settings.useWikiLinks = value;
-          this.plugin.saveSettingsSafely();
+          this.plugin.updateSettings({ useWikiLinks: value });
         }),
       );
 
@@ -200,8 +206,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           .setPlaceholder("# Changelog")
           .setValue(settings.changelogHeading)
           .onChange((value) => {
-            settings.changelogHeading = value.trim();
-            this.plugin.saveSettingsSafely();
+            this.plugin.updateSettings({ changelogHeading: value.trim() });
           }),
       );
 
@@ -222,11 +227,9 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       })
       .addButton((button) => {
         button.setButtonText("Add").onClick(() => {
+          const existing = this.plugin.settings.excludedFolders;
           const folder = normalizePath(folderInputEl.value);
-          const verdict = validateExcludedFolder(
-            folder,
-            settings.excludedFolders,
-          );
+          const verdict = validateExcludedFolder(folder, existing);
           if (verdict === "invalid") {
             new Notice(
               "Excluded folder path cannot be empty or the vault root",
@@ -234,8 +237,12 @@ export class ChangelogSettingsTab extends PluginSettingTab {
             return;
           }
           if (verdict === "ok") {
-            settings.excludedFolders.push(folder);
-            this.plugin.saveSettingsSafely();
+            // Replaced, not pushed: a push into the shared array would
+            // survive updateSettings restoring the previous object, so the
+            // rollback would leave the folder in memory but not on disk.
+            this.plugin.updateSettings({
+              excludedFolders: [...existing, folder],
+            });
             folderInputEl.value = "";
             this.renderExcludedFolders(excludedFoldersList);
           }
