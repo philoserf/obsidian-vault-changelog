@@ -5,14 +5,17 @@ import {
   clampMaxRecentFiles,
   DEFAULT_SETTINGS,
   filterAndSort,
-  generateChangelog,
   isPluginGeneratedChangelog,
   isValidChangelogPath,
   normalizeLoadedSettings,
+  renderChangelog,
   validateExcludedFolder,
 } from "./changelog";
 
 const formatter = (mtime: number, fmt: string) => moment(mtime).format(fmt);
+
+/** Stands in for fileToLinktext in the common case: the basename is unique. */
+const byBasename = (file: { basename: string }) => file.basename;
 
 describe("filterAndSort", () => {
   const files = [
@@ -83,7 +86,7 @@ describe("filterAndSort", () => {
   });
 });
 
-describe("generateChangelog", () => {
+describe("renderChangelog", () => {
   const files = [
     {
       path: "Note B.md",
@@ -98,12 +101,11 @@ describe("generateChangelog", () => {
   ];
 
   test("generates changelog without heading", () => {
-    const result = generateChangelog(
+    const result = renderChangelog(
       files,
-      "YYYY-MM-DD[T]HHmm",
-      true,
-      "",
+      DEFAULT_SETTINGS,
       formatter,
+      byBasename,
     );
     expect(result).toBe(
       "- 2026-01-15T1430 \u00b7 [[Note B]]\n- 2026-01-15T1400 \u00b7 [[Note A]]\n",
@@ -111,12 +113,11 @@ describe("generateChangelog", () => {
   });
 
   test("generates changelog without wiki-links", () => {
-    const result = generateChangelog(
+    const result = renderChangelog(
       files,
-      "YYYY-MM-DD[T]HHmm",
-      false,
-      "",
+      { ...DEFAULT_SETTINGS, useWikiLinks: false },
       formatter,
+      byBasename,
     );
     expect(result).toBe(
       "- 2026-01-15T1430 \u00b7 Note B\n- 2026-01-15T1400 \u00b7 Note A\n",
@@ -124,25 +125,46 @@ describe("generateChangelog", () => {
   });
 
   test("generates changelog with heading", () => {
-    const result = generateChangelog(
+    const result = renderChangelog(
       files,
-      "YYYY-MM-DD[T]HHmm",
-      true,
-      "# Changelog",
+      { ...DEFAULT_SETTINGS, changelogHeading: "# Changelog" },
       formatter,
+      byBasename,
     );
     expect(result).toStartWith("# Changelog\n\n");
   });
 
   test("generates empty changelog", () => {
-    const result = generateChangelog(
-      [],
-      "YYYY-MM-DD[T]HHmm",
-      true,
-      "",
-      formatter,
-    );
+    const result = renderChangelog([], DEFAULT_SETTINGS, formatter, byBasename);
     expect(result).toBe("");
+  });
+
+  test("distinguishes two notes that share a basename", () => {
+    // fileToLinktext falls back to the full path when the filename is not
+    // unique; a bare basename would emit two identical rows whose wiki-links
+    // both resolve to whichever note the vault picks.
+    const duplicates = [
+      {
+        path: "Projects/Meeting Notes.md",
+        basename: "Meeting Notes",
+        stat: { mtime: new Date("2026-01-15T14:30:00").getTime() },
+      },
+      {
+        path: "Archive/Meeting Notes.md",
+        basename: "Meeting Notes",
+        stat: { mtime: new Date("2026-01-15T14:00:00").getTime() },
+      },
+    ];
+    const result = renderChangelog(
+      duplicates,
+      DEFAULT_SETTINGS,
+      formatter,
+      (file) => file.path.replace(/\.md$/, ""),
+    );
+    expect(result).toBe(
+      "- 2026-01-15T1430 \u00b7 [[Projects/Meeting Notes]]\n" +
+        "- 2026-01-15T1400 \u00b7 [[Archive/Meeting Notes]]\n",
+    );
   });
 });
 

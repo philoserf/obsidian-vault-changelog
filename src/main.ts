@@ -10,10 +10,9 @@ import {
 import {
   type ChangelogSettings,
   DEFAULT_SETTINGS,
-  filterAndSort,
-  generateChangelog,
   isPluginGeneratedChangelog,
   normalizeLoadedSettings,
+  renderChangelog,
 } from "./changelog";
 import { ChangelogSettingsTab } from "./settings";
 
@@ -64,20 +63,44 @@ export default class ChangelogPlugin extends Plugin {
   }
 
   async updateChangelog(): Promise<void> {
-    const recentFiles = filterAndSort(
+    const { changelogPath } = this.settings;
+    const content = renderChangelog(
       this.app.vault.getMarkdownFiles(),
-      this.settings.changelogPath,
-      this.settings.excludedFolders,
-      this.settings.maxRecentFiles,
-    );
-    const changelog = generateChangelog(
-      recentFiles,
-      this.settings.datetimeFormat,
-      this.settings.useWikiLinks,
-      this.settings.changelogHeading,
+      this.settings,
       (mtime, fmt) => window.moment(mtime).format(fmt),
+      (file) =>
+        this.app.metadataCache.fileToLinktext(file as TFile, changelogPath),
     );
-    await this.writeToFile(this.settings.changelogPath, changelog);
+
+    let file = this.app.vault.getAbstractFileByPath(changelogPath);
+    if (!file) {
+      try {
+        file = await this.app.vault.create(changelogPath, "");
+      } catch (createErr) {
+        // File may have been created by a concurrent event (TOCTOU race)
+        file = this.app.vault.getAbstractFileByPath(changelogPath);
+        if (!file)
+          throw new Error(`Failed to create changelog at: ${changelogPath}`, {
+            cause: createErr,
+          });
+      }
+    }
+    if (file instanceof TFile) {
+      // The plugin owns the file at changelogPath and replaces it wholesale,
+      // so confirm this is a file the plugin wrote before destroying it. The
+      // path can be typed to any note in the vault.
+      const existing = await this.app.vault.read(file);
+      if (
+        !isPluginGeneratedChangelog(existing, this.settings.changelogHeading)
+      ) {
+        throw new Error(
+          `Refusing to overwrite ${changelogPath}: it does not look like a changelog this plugin generated. Point "Changelog path" at a new or empty note, or clear that file first.`,
+        );
+      }
+      await this.app.vault.modify(file, content);
+    } else {
+      new Notice(`Could not update changelog at path: ${changelogPath}`);
+    }
   }
 
   /**
@@ -92,38 +115,6 @@ export default class ChangelogPlugin extends Plugin {
         `Failed to update changelog: ${err instanceof Error ? err.message : String(err)}`,
       );
     });
-  }
-
-  async writeToFile(path: string, content: string): Promise<void> {
-    let file = this.app.vault.getAbstractFileByPath(path);
-    if (!file) {
-      try {
-        file = await this.app.vault.create(path, "");
-      } catch (createErr) {
-        // File may have been created by a concurrent event (TOCTOU race)
-        file = this.app.vault.getAbstractFileByPath(path);
-        if (!file)
-          throw new Error(`Failed to create changelog at: ${path}`, {
-            cause: createErr,
-          });
-      }
-    }
-    if (file instanceof TFile) {
-      // The plugin owns the file at changelogPath and replaces it wholesale,
-      // so confirm this is a file the plugin wrote before destroying it. The
-      // path can be typed to any note in the vault.
-      const existing = await this.app.vault.read(file);
-      if (
-        !isPluginGeneratedChangelog(existing, this.settings.changelogHeading)
-      ) {
-        throw new Error(
-          `Refusing to overwrite ${path}: it does not look like a changelog this plugin generated. Point "Changelog path" at a new or empty note, or clear that file first.`,
-        );
-      }
-      await this.app.vault.modify(file, content);
-    } else {
-      new Notice(`Could not update changelog at path: ${path}`);
-    }
   }
 
   async loadSettings(): Promise<void> {

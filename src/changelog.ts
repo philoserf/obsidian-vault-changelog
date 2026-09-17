@@ -138,7 +138,7 @@ export function validateExcludedFolder(
   return "ok";
 }
 
-interface ChangelogFile {
+export interface ChangelogFile {
   path: string;
   basename: string;
   stat: { mtime: number };
@@ -165,18 +165,41 @@ export function filterAndSort(
 
 export type TimeFormatter = (mtime: number, format: string) => string;
 
-export function generateChangelog(
+/**
+ * How a file is named in the changelog. Injected, like TimeFormatter, so this
+ * module stays Obsidian-free: production passes MetadataCache.fileToLinktext,
+ * which uses the bare filename when it is unique in the vault and the full
+ * path when it is not.
+ */
+export type LinkTextResolver = (file: ChangelogFile) => string;
+
+/**
+ * The module's one render entry point: filter, sort and format, taking the
+ * settings it renders from rather than six of their fields spelled out
+ * positionally. Adding a setting that affects output no longer means widening
+ * a signature and a call site that carry no information of their own.
+ */
+export function renderChangelog(
   files: ChangelogFile[],
-  datetimeFormat: string,
-  useWikiLinks: boolean,
-  changelogHeading: string,
+  settings: ChangelogSettings,
   formatTime: TimeFormatter,
+  resolveLinkText: LinkTextResolver,
 ): string {
-  let content = changelogHeading ? `${changelogHeading}\n\n` : "";
-  for (const file of files) {
-    const time = formatTime(file.stat.mtime, datetimeFormat);
-    const name = useWikiLinks ? `[[${file.basename}]]` : file.basename;
-    content += `- ${time} · ${name}\n`;
+  const recent = filterAndSort(
+    files,
+    settings.changelogPath,
+    settings.excludedFolders,
+    settings.maxRecentFiles,
+  );
+  let content = settings.changelogHeading
+    ? `${settings.changelogHeading}\n\n`
+    : "";
+  for (const file of recent) {
+    const time = formatTime(file.stat.mtime, settings.datetimeFormat);
+    // Resolved for both modes: a bare basename is ambiguous in plain text for
+    // exactly the same reason it is ambiguous as a wiki-link.
+    const name = resolveLinkText(file);
+    content += `- ${time} · ${settings.useWikiLinks ? `[[${name}]]` : name}\n`;
   }
   return content;
 }
