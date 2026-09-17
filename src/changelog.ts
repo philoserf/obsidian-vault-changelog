@@ -44,54 +44,59 @@ export function clampMaxRecentFiles(value: unknown): number {
 }
 
 /**
- * Turn persisted data into valid settings: drop unknown keys (so renamed
- * or removed settings don't linger), fall back to defaults for known keys
- * whose runtime type doesn't match (guards against hand-edited or corrupt
- * data.json), normalize folder paths so duplicate detection in the
- * settings UI stays consistent, clamp maxRecentFiles, and trim the
- * heading so generateChangelog's "\n\n" spacing stays predictable.
- * `normalize` is injected (Obsidian's normalizePath in production) to
- * keep this module Obsidian-free.
+ * Turn persisted data into valid settings: one expression per field, each
+ * reading its persisted value by name and falling back to the default when
+ * the runtime type doesn't match (which is what guards against a hand-edited
+ * or corrupt data.json). Paths are normalized so duplicate detection in the
+ * settings UI stays consistent, maxRecentFiles is clamped, and the heading is
+ * trimmed so renderChangelog's "\n\n" spacing stays predictable. `normalize`
+ * is injected (Obsidian's normalizePath in production) to keep this module
+ * Obsidian-free.
+ *
+ * Unknown keys cannot survive, and no filter is needed to stop them: the
+ * result is *built* rather than patched, so nothing from `loaded` is spread
+ * into it and every field arrives by name. That also makes the object immune
+ * to a `__proto__` key in the persisted JSON, which is a property of the
+ * construction rather than of a guard someone could delete.
  */
 export function normalizeLoadedSettings(
   raw: unknown,
   normalize: (path: string) => string,
 ): ChangelogSettings {
-  const loaded = (raw ?? {}) as Record<string, unknown>;
-  const knownKeys = new Set(Object.keys(DEFAULT_SETTINGS));
-  const filtered: Record<string, unknown> = {};
-  for (const key of Object.keys(loaded)) {
-    if (knownKeys.has(key)) {
-      filtered[key] = loaded[key];
-    }
-  }
-  const settings: ChangelogSettings = {
-    ...DEFAULT_SETTINGS,
-    ...(filtered as Partial<ChangelogSettings>),
+  const loaded = (raw ?? {}) as Partial<
+    Record<keyof ChangelogSettings, unknown>
+  >;
+
+  const str = (value: unknown, fallback: string): string =>
+    typeof value === "string" ? value : fallback;
+  const bool = (value: unknown, fallback: boolean): boolean =>
+    typeof value === "boolean" ? value : fallback;
+
+  // An array carrying a non-string is corrupt rather than partly usable, so
+  // the whole field falls back -- the same all-or-nothing rule the scalar
+  // guards apply. Mapping afterwards also means the default array is copied
+  // rather than aliased, which matters because the settings UI mutates this
+  // field in place.
+  const folders =
+    Array.isArray(loaded.excludedFolders) &&
+    loaded.excludedFolders.every((folder) => typeof folder === "string")
+      ? (loaded.excludedFolders as string[])
+      : DEFAULT_SETTINGS.excludedFolders;
+
+  return {
+    autoUpdate: bool(loaded.autoUpdate, DEFAULT_SETTINGS.autoUpdate),
+    changelogPath: normalize(
+      str(loaded.changelogPath, DEFAULT_SETTINGS.changelogPath),
+    ),
+    datetimeFormat: str(loaded.datetimeFormat, DEFAULT_SETTINGS.datetimeFormat),
+    maxRecentFiles: clampMaxRecentFiles(loaded.maxRecentFiles),
+    excludedFolders: folders.map(normalize),
+    useWikiLinks: bool(loaded.useWikiLinks, DEFAULT_SETTINGS.useWikiLinks),
+    changelogHeading: str(
+      loaded.changelogHeading,
+      DEFAULT_SETTINGS.changelogHeading,
+    ).trim(),
   };
-  for (const key of [
-    "changelogPath",
-    "changelogHeading",
-    "datetimeFormat",
-  ] as const) {
-    if (typeof settings[key] !== "string")
-      settings[key] = DEFAULT_SETTINGS[key];
-  }
-  for (const key of ["autoUpdate", "useWikiLinks"] as const) {
-    if (typeof settings[key] !== "boolean")
-      settings[key] = DEFAULT_SETTINGS[key];
-  }
-  if (
-    !Array.isArray(settings.excludedFolders) ||
-    !settings.excludedFolders.every((folder) => typeof folder === "string")
-  ) {
-    settings.excludedFolders = DEFAULT_SETTINGS.excludedFolders;
-  }
-  settings.changelogPath = normalize(settings.changelogPath);
-  settings.excludedFolders = settings.excludedFolders.map(normalize);
-  settings.maxRecentFiles = clampMaxRecentFiles(settings.maxRecentFiles);
-  settings.changelogHeading = settings.changelogHeading.trim();
-  return settings;
 }
 
 /** The changelog must be a markdown file; paths are validated post-normalize. */
