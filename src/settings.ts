@@ -9,8 +9,8 @@ import {
 
 import {
   clampMaxRecentFiles,
-  coerceChangelogPath,
-  coerceDatetimeFormat,
+  DEFAULT_SETTINGS,
+  isValidChangelogPath,
   MAX_RECENT_FILES,
   validateExcludedFolder,
 } from "./changelog";
@@ -28,13 +28,14 @@ class PathSuggest extends AbstractInputSuggest<string> {
   private getPaths(): string[] {
     if (this.cachedPaths) return this.cachedPaths;
 
-    // Folders only. This suggester serves both the changelog-path field and
-    // the excluded-folder field, and neither wants an existing note: the
-    // changelog path is overwritten wholesale, so completing to a note is
-    // the fast way to lose it, and an excluded *folder* is never a file.
     const paths: string[] = [];
     for (const folder of this.app.vault.getAllFolders()) {
       paths.push(`${folder.path}/`);
+    }
+    for (const file of this.app.vault.getFiles()) {
+      if (file.extension === "md") {
+        paths.push(file.path);
+      }
     }
     this.cachedPaths = paths;
     return paths;
@@ -73,7 +74,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       return;
     }
 
-    this.plugin.settings.excludedFolders.forEach((folder, index) => {
+    this.plugin.settings.excludedFolders.forEach((folder) => {
       const folderDiv = container.createDiv("excluded-folder-item");
       folderDiv.createSpan({ text: folder });
 
@@ -84,38 +85,29 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       });
 
       removeButton.addEventListener("click", () => {
-        // Remove by position, not by value. `indexOf` removed the first row
-        // matching the text, so with two rows reading the same folder both
-        // buttons deleted the first one. Replacing the array rather than
-        // splicing it is also what makes updateSettings' rollback correct --
-        // a mutation of the shared array survives restoring the object.
-        this.plugin.updateSettings({
-          excludedFolders: this.plugin.settings.excludedFolders.filter(
-            (_, i) => i !== index,
-          ),
-        });
-        this.renderExcludedFolders(container);
+        const index = this.plugin.settings.excludedFolders.indexOf(folder);
+        if (index > -1) {
+          this.plugin.settings.excludedFolders.splice(index, 1);
+          this.plugin.saveSettingsSafely();
+          this.renderExcludedFolders(container);
+        }
       });
     });
   }
 
   display(): void {
     const { containerEl } = this;
+    const { settings } = this.plugin;
 
-    // No `const { settings } = this.plugin` here. updateSettings replaces the
-    // settings object rather than mutating it, so a binding captured once at
-    // display time would be a snapshot that goes stale on the first edit and
-    // feeds pre-change values back into the next one. Handlers read
-    // `this.plugin.settings` at event time instead.
     containerEl.empty();
-    const { settings } = this.plugin; // initial values for the controls only
 
     new Setting(containerEl)
       .setName("Auto update")
       .setDesc("Automatically update changelog on vault changes")
       .addToggle((toggle) =>
         toggle.setValue(settings.autoUpdate).onChange((value) => {
-          this.plugin.updateSettings({ autoUpdate: value });
+          settings.autoUpdate = value;
+          this.plugin.saveSettingsSafely();
         }),
       );
 
@@ -129,70 +121,37 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 
         text.inputEl.addEventListener("blur", () => {
           const normalized = normalizePath(text.getValue());
-          // The rule runs once. Comparing its result against the *normalized*
-          // input rather than the raw input matters: a trailing slash or a
-          // backslash normalizes away harmlessly, and comparing against the
-          // raw text would report those as rejected paths.
-          const coerced = coerceChangelogPath(
-            normalized,
-            normalizePath,
-            this.plugin.settings.changelogPath,
-          );
-          if (coerced !== normalized) {
+          if (!isValidChangelogPath(normalized)) {
+            text.setValue(settings.changelogPath);
             new Notice("Changelog path must end with .md");
+            return;
           }
-          text.setValue(coerced);
-          this.plugin.updateSettings({ changelogPath: coerced });
+          settings.changelogPath = normalized;
+          this.plugin.saveSettingsSafely();
         });
 
         new PathSuggest(this.app, text.inputEl);
       });
 
-    // `| null` plus the guard in setDatetimePreview, rather than a bare
-    // definite-assignment. The assignment genuinely cannot precede the closure
-    // that reads it -- descEl does not exist until the Setting is constructed
-    // -- and TypeScript's definite-assignment analysis does not reach into
-    // closures, so it raised nothing here and would raise nothing if a later
-    // edit broke the ordering. One guard makes the assumption checkable.
-    let datetimePreview: HTMLElement | null = null;
-
-    const setDatetimePreview = (format: string): void => {
-      if (!datetimePreview) return;
-      datetimePreview.textContent = `Preview: ${window.moment().format(format)}`;
-    };
+    let datetimePreview: HTMLElement;
 
     const datetimeSetting = new Setting(containerEl)
       .setName("Datetime format")
       .setDesc("Moment.js format string")
-      .addText((text) => {
+      .addText((text) =>
         text
           .setPlaceholder("YYYY-MM-DD[T]HHmm")
           .setValue(settings.datetimeFormat)
-          // Preview only -- no setValue, no save. onChange fires per keystroke,
-          // and an empty field is a transient state on the way to a new format,
-          // since select-all-then-retype is how a value gets replaced. Writing
-          // the default back into the input here moved the caret mid-edit and
-          // persisted that default over the user's format before they had typed
-          // the first character of its replacement. #175 was this same bug in
-          // the field below, fixed the same way.
           .onChange((format) => {
-            setDatetimePreview(coerceDatetimeFormat(format));
-          });
-
-        // Commit on blur, matching both sibling text fields. Blur is the point
-        // the user has finished, so substituting the default for a field left
-        // empty is a decision rather than an interruption.
-        text.inputEl.addEventListener("blur", () => {
-          // No current-value fallback, deliberately, and unlike every other
-          // field here. Clearing this field is the only reset-to-default it
-          // offers, and it has always landed on the default; passing the
-          // current value would quietly take that away.
-          const nextFormat = coerceDatetimeFormat(text.getValue());
-          text.setValue(nextFormat);
-          setDatetimePreview(nextFormat);
-          this.plugin.updateSettings({ datetimeFormat: nextFormat });
-        });
-      });
+            const nextFormat = format || DEFAULT_SETTINGS.datetimeFormat;
+            if (!format) {
+              text.setValue(nextFormat);
+            }
+            settings.datetimeFormat = nextFormat;
+            datetimePreview.textContent = `Preview: ${window.moment().format(nextFormat)}`;
+            this.plugin.saveSettingsSafely();
+          }),
+      );
 
     datetimePreview = datetimeSetting.descEl.createDiv({
       text: `Preview: ${window.moment().format(settings.datetimeFormat)}`,
@@ -207,24 +166,18 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         text.setValue(settings.maxRecentFiles.toString());
 
         text.inputEl.addEventListener("blur", () => {
-          const entered = text.getValue().trim();
-          // One rule, one branch. The hand-rolled `isNaN || < 1` pre-check
-          // that used to sit here enforced only the low end, so 1000 and 25.9
-          // were rewritten silently while 0 and "abc" got a notice naming a
-          // range the handler did not actually apply.
-          const clamped = clampMaxRecentFiles(
-            entered,
-            this.plugin.settings.maxRecentFiles,
-          );
-          // Compare numerically, not by string round-trip: "025", "25.0" and
-          // "1e2" are all valid input that re-serializes differently.
-          if (clamped !== Number(entered)) {
+          const numValue = Number(text.getValue());
+          if (Number.isNaN(numValue) || numValue < 1) {
+            text.setValue(settings.maxRecentFiles.toString());
             new Notice(
-              `Max recent files must be a whole number between 1 and ${MAX_RECENT_FILES}`,
+              `Max recent files must be between 1 and ${MAX_RECENT_FILES}`,
             );
+            return;
           }
-          text.setValue(clamped.toString());
-          this.plugin.updateSettings({ maxRecentFiles: clamped });
+          const flooredValue = clampMaxRecentFiles(numValue);
+          settings.maxRecentFiles = flooredValue;
+          text.setValue(flooredValue.toString());
+          this.plugin.saveSettingsSafely();
         });
       });
 
@@ -233,7 +186,8 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       .setDesc("Format filenames as wiki-links [[note]] instead of plain text")
       .addToggle((toggle) =>
         toggle.setValue(settings.useWikiLinks).onChange((value) => {
-          this.plugin.updateSettings({ useWikiLinks: value });
+          settings.useWikiLinks = value;
+          this.plugin.saveSettingsSafely();
         }),
       );
 
@@ -247,7 +201,8 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           .setPlaceholder("# Changelog")
           .setValue(settings.changelogHeading)
           .onChange((value) => {
-            this.plugin.updateSettings({ changelogHeading: value.trim() });
+            settings.changelogHeading = value.trim();
+            this.plugin.saveSettingsSafely();
           }),
       );
 
@@ -268,39 +223,22 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       })
       .addButton((button) => {
         button.setButtonText("Add").onClick(() => {
-          const existing = this.plugin.settings.excludedFolders;
           const folder = normalizePath(folderInputEl.value);
-          const verdict = validateExcludedFolder(folder, existing);
-          // Exhaustive, so a fourth verdict cannot be added without the
-          // compiler naming this call site. Falling off the end is exactly how
-          // "duplicate" went unhandled: no notice, input not cleared, list not
-          // re-rendered -- indistinguishable from a dead button.
-          switch (verdict) {
-            case "invalid":
-              new Notice(
-                "Excluded folder path cannot be empty or the vault root",
-              );
-              return;
-            case "duplicate":
-              new Notice(`"${folder}" is already excluded`);
-              folderInputEl.value = "";
-              return;
-            case "ok":
-              // Replaced, not pushed: a push into the shared array would
-              // survive updateSettings restoring the previous object, so the
-              // rollback would leave the folder in memory but not on disk.
-              this.plugin.updateSettings({
-                excludedFolders: [...existing, folder],
-              });
-              folderInputEl.value = "";
-              this.renderExcludedFolders(excludedFoldersList);
-              return;
-            default: {
-              const unhandled: never = verdict;
-              throw new Error(
-                `Unhandled excluded-folder verdict: ${String(unhandled)}`,
-              );
-            }
+          const verdict = validateExcludedFolder(
+            folder,
+            settings.excludedFolders,
+          );
+          if (verdict === "invalid") {
+            new Notice(
+              "Excluded folder path cannot be empty or the vault root",
+            );
+            return;
+          }
+          if (verdict === "ok") {
+            settings.excludedFolders.push(folder);
+            this.plugin.saveSettingsSafely();
+            folderInputEl.value = "";
+            this.renderExcludedFolders(excludedFoldersList);
           }
         });
       });
