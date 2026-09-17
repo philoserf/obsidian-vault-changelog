@@ -22,11 +22,23 @@ export const MAX_RECENT_FILES = 500;
 
 /**
  * The one authoritative clamping rule for maxRecentFiles: floor to an
- * integer and clamp to [1, MAX_RECENT_FILES]; non-finite input falls back
- * to the default. Load-time and the settings UI both call this.
+ * integer and clamp to [1, MAX_RECENT_FILES]; anything that is not a number
+ * falls back to the default. Load-time and the settings UI both call this.
+ *
+ * Non-numbers are rejected *before* coercion rather than after. `Number()`
+ * maps null, "", "   ", [] and false to a perfectly finite 0, which the clamp
+ * below would then raise to 1 -- turning a corrupt data.json into a changelog
+ * one entry long, which reads as "the plugin broke" rather than as a settings
+ * problem. Numeric strings stay accepted because the settings tab hands this
+ * function the raw contents of a text field.
  */
 export function clampMaxRecentFiles(value: unknown): number {
-  const raw = Number(value);
+  const raw =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
   if (!Number.isFinite(raw)) return DEFAULT_SETTINGS.maxRecentFiles;
   return Math.max(1, Math.min(Math.floor(raw), MAX_RECENT_FILES));
 }
