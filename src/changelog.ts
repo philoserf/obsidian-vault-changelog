@@ -87,7 +87,7 @@ export function isValidChangelogPath(normalizedPath: string): boolean {
   return normalizedPath.endsWith(".md");
 }
 
-/** An entry line in the shape generateChangelog emits: "- <time> · <name>". */
+/** An entry line in the shape renderChangelog emits: "- <time> · <name>". */
 const ENTRY_LINE = /^- .+ · .+$/;
 
 /**
@@ -110,7 +110,7 @@ export function isPluginGeneratedChangelog(
     .map((line) => line.trim())
     .filter((line) => line !== "");
 
-  // Empty: writeToFile's create path lays down "" before the first modify.
+  // Empty: updateChangelog's create path lays down "" before the first modify.
   if (lines.length === 0) return true;
 
   // A heading and nothing else -- a configured heading over an empty vault.
