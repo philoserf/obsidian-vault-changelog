@@ -15,8 +15,8 @@ Originally created by [Badr Bouslikhin](https://github.com/badrbouslikhin).
 
 ## Usage
 
-- **Manual**: Command palette > `Vault Changelog: Update`
-- **Automatic**: Enable in settings; the changelog updates whenever a file is modified.
+- **Manual**: Command palette > `Vault Changelog: Update Changelog`
+- **Automatic**: Enable in settings; the changelog updates whenever a note is modified, renamed, or deleted.
 
 ## Example Output
 
