@@ -10,13 +10,6 @@ async function build() {
     sourcemap: isWatch ? "linked" : "none",
   });
 
-  if (!result.success) {
-    console.error("Build failed");
-    for (const message of result.logs) console.error(message);
-    if (!isWatch) process.exit(1);
-    return;
-  }
-
   console.log(
     `Built main.js (${(result.outputs[0].size / 1024).toFixed(1)} KB)`,
   );
