@@ -9,8 +9,8 @@ import {
 
 import {
   clampMaxRecentFiles,
-  DEFAULT_SETTINGS,
-  isValidChangelogPath,
+  coerceChangelogPath,
+  coerceDatetimeFormat,
   MAX_RECENT_FILES,
   validateExcludedFolder,
 } from "./changelog";
@@ -129,13 +129,20 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 
         text.inputEl.addEventListener("blur", () => {
           const normalized = normalizePath(text.getValue());
-          if (!isValidChangelogPath(normalized)) {
-            text.setValue(this.plugin.settings.changelogPath);
+          // The rule runs once. Comparing its result against the *normalized*
+          // input rather than the raw input matters: a trailing slash or a
+          // backslash normalizes away harmlessly, and comparing against the
+          // raw text would report those as rejected paths.
+          const coerced = coerceChangelogPath(
+            normalized,
+            normalizePath,
+            this.plugin.settings.changelogPath,
+          );
+          if (coerced !== normalized) {
             new Notice("Changelog path must end with .md");
-            return;
           }
-          text.setValue(normalized);
-          this.plugin.updateSettings({ changelogPath: normalized });
+          text.setValue(coerced);
+          this.plugin.updateSettings({ changelogPath: coerced });
         });
 
         new PathSuggest(this.app, text.inputEl);
@@ -169,14 +176,18 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           // the first character of its replacement. #175 was this same bug in
           // the field below, fixed the same way.
           .onChange((format) => {
-            setDatetimePreview(format || DEFAULT_SETTINGS.datetimeFormat);
+            setDatetimePreview(coerceDatetimeFormat(format));
           });
 
         // Commit on blur, matching both sibling text fields. Blur is the point
         // the user has finished, so substituting the default for a field left
         // empty is a decision rather than an interruption.
         text.inputEl.addEventListener("blur", () => {
-          const nextFormat = text.getValue() || DEFAULT_SETTINGS.datetimeFormat;
+          // No current-value fallback, deliberately, and unlike every other
+          // field here. Clearing this field is the only reset-to-default it
+          // offers, and it has always landed on the default; passing the
+          // current value would quietly take that away.
+          const nextFormat = coerceDatetimeFormat(text.getValue());
           text.setValue(nextFormat);
           setDatetimePreview(nextFormat);
           this.plugin.updateSettings({ datetimeFormat: nextFormat });
@@ -196,17 +207,24 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         text.setValue(settings.maxRecentFiles.toString());
 
         text.inputEl.addEventListener("blur", () => {
-          const numValue = Number(text.getValue());
-          if (Number.isNaN(numValue) || numValue < 1) {
-            text.setValue(this.plugin.settings.maxRecentFiles.toString());
+          const entered = text.getValue().trim();
+          // One rule, one branch. The hand-rolled `isNaN || < 1` pre-check
+          // that used to sit here enforced only the low end, so 1000 and 25.9
+          // were rewritten silently while 0 and "abc" got a notice naming a
+          // range the handler did not actually apply.
+          const clamped = clampMaxRecentFiles(
+            entered,
+            this.plugin.settings.maxRecentFiles,
+          );
+          // Compare numerically, not by string round-trip: "025", "25.0" and
+          // "1e2" are all valid input that re-serializes differently.
+          if (clamped !== Number(entered)) {
             new Notice(
-              `Max recent files must be between 1 and ${MAX_RECENT_FILES}`,
+              `Max recent files must be a whole number between 1 and ${MAX_RECENT_FILES}`,
             );
-            return;
           }
-          const flooredValue = clampMaxRecentFiles(numValue);
-          text.setValue(flooredValue.toString());
-          this.plugin.updateSettings({ maxRecentFiles: flooredValue });
+          text.setValue(clamped.toString());
+          this.plugin.updateSettings({ maxRecentFiles: clamped });
         });
       });
 

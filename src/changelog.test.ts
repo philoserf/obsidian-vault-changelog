@@ -3,10 +3,12 @@ import moment from "moment";
 
 import {
   clampMaxRecentFiles,
+  coerceChangelogPath,
+  coerceDatetimeFormat,
+  coerceExcludedFolders,
   DEFAULT_SETTINGS,
   filterAndSort,
   isPluginGeneratedChangelog,
-  isValidChangelogPath,
   normalizeLoadedSettings,
   renderChangelog,
   validateExcludedFolder,
@@ -203,6 +205,16 @@ describe("clampMaxRecentFiles", () => {
   // Number() maps every one of these to a finite 0, which the clamp would
   // raise to 1. They are the shapes a hand-edited or partially-written
   // data.json actually produces, and 1 is the answer that looks like a bug.
+  // The settings tab passes its current value here; the loader omits it.
+  // Only the non-numeric path uses it -- an out-of-range *number* still
+  // clamps, which is why 0 becomes 1 rather than reverting.
+  test("uses the supplied fallback instead of the default", () => {
+    expect(clampMaxRecentFiles("abc", 40)).toBe(40);
+    expect(clampMaxRecentFiles(null, 40)).toBe(40);
+    expect(clampMaxRecentFiles(0, 40)).toBe(1);
+    expect(clampMaxRecentFiles(1000, 40)).toBe(500);
+  });
+
   test("falls back to the default for non-numeric input Number() would coerce", () => {
     expect(clampMaxRecentFiles(null)).toBe(25);
     expect(clampMaxRecentFiles("")).toBe(25);
@@ -267,6 +279,35 @@ describe("normalizeLoadedSettings", () => {
     }
   });
 
+  // The three load/UI divergences #213 names. Each of these persisted values
+  // survived load untouched before, while the settings tab refused it.
+  test("applies the changelog-path rule at load", () => {
+    expect(
+      normalizeLoadedSettings({ changelogPath: "Notes" }, identity)
+        .changelogPath,
+    ).toBe(DEFAULT_SETTINGS.changelogPath);
+  });
+
+  test("applies the datetime-format rule at load", () => {
+    expect(
+      normalizeLoadedSettings({ datetimeFormat: "" }, identity).datetimeFormat,
+    ).toBe(DEFAULT_SETTINGS.datetimeFormat);
+  });
+
+  test("applies the excluded-folder rule at load", () => {
+    const stripTrailing = (p: string) => p.replace(/\/+$/, "");
+    expect(
+      normalizeLoadedSettings({ excludedFolders: ["."] }, identity)
+        .excludedFolders,
+    ).toEqual([]);
+    expect(
+      normalizeLoadedSettings(
+        { excludedFolders: ["Archive/", "Archive"] },
+        stripTrailing,
+      ).excludedFolders,
+    ).toEqual(["Archive"]);
+  });
+
   test("trims the changelog heading", () => {
     const settings = normalizeLoadedSettings(
       { changelogHeading: "  # Changelog \n" },
@@ -309,14 +350,98 @@ describe("normalizeLoadedSettings", () => {
   });
 });
 
-describe("isValidChangelogPath", () => {
-  test("accepts a markdown path", () => {
-    expect(isValidChangelogPath("Notes/Changelog.md")).toBe(true);
+describe("coerceChangelogPath", () => {
+  const identity = (p: string) => p;
+
+  test("accepts a markdown path, normalized", () => {
+    const stripTrailing = (p: string) => p.replace(/\/+$/, "");
+    expect(coerceChangelogPath("Notes/Changelog.md/", stripTrailing)).toBe(
+      "Notes/Changelog.md",
+    );
   });
 
-  test("rejects non-markdown paths", () => {
-    expect(isValidChangelogPath("Changelog.txt")).toBe(false);
-    expect(isValidChangelogPath("Changelog")).toBe(false);
+  test("falls back when the path is not markdown", () => {
+    expect(coerceChangelogPath("Notes", identity)).toBe(
+      DEFAULT_SETTINGS.changelogPath,
+    );
+    expect(coerceChangelogPath("Changelog.txt", identity)).toBe(
+      DEFAULT_SETTINGS.changelogPath,
+    );
+  });
+
+  test("falls back when the value is not a string", () => {
+    expect(coerceChangelogPath(42, identity)).toBe(
+      DEFAULT_SETTINGS.changelogPath,
+    );
+  });
+
+  // The settings tab passes its current value, so a typo reverts to what the
+  // user had rather than resetting the setting to Changelog.md.
+  test("uses the supplied fallback instead of the default", () => {
+    expect(coerceChangelogPath("Notes", identity, "Notes/Log.md")).toBe(
+      "Notes/Log.md",
+    );
+  });
+});
+
+describe("coerceDatetimeFormat", () => {
+  test("keeps a non-empty format", () => {
+    expect(coerceDatetimeFormat("YYYY-MM-DD")).toBe("YYYY-MM-DD");
+  });
+
+  // moment's format("") falls through to ISO-8601 rather than failing, so an
+  // empty persisted format silently turns every row into a full timestamp.
+  test("falls back for an empty or whitespace-only format", () => {
+    expect(coerceDatetimeFormat("")).toBe(DEFAULT_SETTINGS.datetimeFormat);
+    expect(coerceDatetimeFormat("   ")).toBe(DEFAULT_SETTINGS.datetimeFormat);
+  });
+
+  test("falls back when the value is not a string", () => {
+    expect(coerceDatetimeFormat(42)).toBe(DEFAULT_SETTINGS.datetimeFormat);
+    expect(coerceDatetimeFormat(null)).toBe(DEFAULT_SETTINGS.datetimeFormat);
+  });
+});
+
+describe("coerceExcludedFolders", () => {
+  const identity = (p: string) => p;
+  const stripTrailing = (p: string) => p.replace(/\/+$/, "");
+
+  test("normalizes every entry", () => {
+    expect(
+      coerceExcludedFolders(["Archive/", "Templates/"], stripTrailing),
+    ).toEqual(["Archive", "Templates"]);
+  });
+
+  // Normalization is exactly the operation that can make two distinct
+  // persisted strings equal, and the Add button already refuses this state.
+  test("de-duplicates entries that normalization makes equal", () => {
+    expect(
+      coerceExcludedFolders(["Archive/", "Archive"], stripTrailing),
+    ).toEqual(["Archive"]);
+  });
+
+  test("drops every spelling of the vault root", () => {
+    expect(
+      coerceExcludedFolders(["", ".", "./", "/", "Archive"], identity),
+    ).toEqual(["Archive"]);
+  });
+
+  test("falls back entirely when an entry is not a string", () => {
+    expect(coerceExcludedFolders(["Archive", 42], identity)).toEqual(
+      DEFAULT_SETTINGS.excludedFolders,
+    );
+  });
+
+  test("falls back when the value is not an array", () => {
+    expect(coerceExcludedFolders(null, identity)).toEqual(
+      DEFAULT_SETTINGS.excludedFolders,
+    );
+  });
+
+  test("copies the fallback rather than aliasing it", () => {
+    const result = coerceExcludedFolders(null, identity);
+    result.push("Mutated");
+    expect(DEFAULT_SETTINGS.excludedFolders).toEqual([]);
   });
 });
 
