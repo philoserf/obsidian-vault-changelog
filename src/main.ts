@@ -18,9 +18,18 @@ import { ChangelogSettingsTab } from "./settings";
 
 export default class ChangelogPlugin extends Plugin {
   settings: ChangelogSettings = DEFAULT_SETTINGS;
-  private debouncedVaultChange = debounce(() => {
-    this.runUpdate();
-  }, 200);
+  // Third argument is resetTimer, and it defaults to false -- which makes
+  // `debounce` fire 200ms after the *first* event of a burst, i.e. a throttle.
+  // Sustained editing with Obsidian autosaving would then regenerate the whole
+  // changelog several times a second. `true` is the trailing edge the name
+  // implies: wait until editing goes quiet, then write once.
+  private debouncedVaultChange = debounce(
+    () => {
+      this.runUpdate();
+    },
+    200,
+    true,
+  );
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -124,7 +133,14 @@ export default class ChangelogPlugin extends Plugin {
     );
   }
 
-  onunload(): void {}
+  onunload(): void {
+    // Event listeners registered via registerEvent are cleaned up
+    // automatically; the debounce timer is not. Without this, disabling the
+    // plugin within 200ms of an edit still fires an update against a
+    // torn-down instance -- and on a plugin *update* the new instance has
+    // already loaded, so two of them write the same file.
+    this.debouncedVaultChange.cancel();
+  }
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
