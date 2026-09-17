@@ -4,251 +4,166 @@ What you need to hold in mind to change Vault Changelog without damaging it. Not
 files — `WALKTHROUGH.md` is that. This is the set of ideas the code is an expression of, and the
 places where holding the wrong one will cause damage.
 
+**This describes 1.5.4.** The 1.6.0 and 1.7.0 releases were withdrawn and their code reverted off
+`main`. That matters for reading this document: the architecture below is the one that _preceded_
+a milestone which attacked most of its weak points, so where this theory says a boundary is thin,
+that is a live assessment and not a hypothetical.
+
 ## What the system is for
 
-A vault is a directory of markdown notes. Obsidian gives the user no good answer to "what have I
-been working on lately", because the file list is alphabetical and the graph is topological.
-This plugin answers it by maintaining a note that lists the most recently modified notes, newest
-first, each as a link.
+A vault is a directory of markdown notes. Obsidian gives no good answer to "what have I been
+working on lately" — the file list is alphabetical and the graph is topological. This plugin
+answers it by maintaining a note listing the most recently modified notes, newest first, as
+links.
 
-The name is the first thing to get straight, because it is wrong in a way that matters.
+The name is the first thing to get straight, because it misleads.
 
 **This is not a changelog. It is a view.** Nothing accumulates. There is no history. Every update
-computes the entire file contents from the vault's current state and writes them over whatever
-was there. Run it twice against an unchanged vault and you get the same bytes. A note edited
-today and then deleted tomorrow leaves no trace — it is simply absent from the next render, as
-though it had never appeared. `renderChangelog` is a pure function from (files, settings) to a
-string, and the plugin's entire job is to keep the file at `changelogPath` equal to that string.
+computes the whole file from the vault's current state and writes it over whatever was there. A
+note edited today and deleted tomorrow leaves no trace — it is simply absent from the next
+render. The output is a pure function of (files, settings), and the plugin's entire job is to
+keep the file at `changelogPath` equal to that function's result.
 
 Hold that and most of the design follows. Hold "it is a log" and you will reach for appends,
-diffs, and merge logic, all of which the system is built to make unnecessary and none of which
-it can support.
+diffs and merge logic, none of which this system can support.
 
-The domain vocabulary is thin and worth knowing exactly:
+The vocabulary is thin and worth knowing exactly:
 
-- An **entry** is one rendered row: a timestamp and a name, `- 2026-01-02T0930 · [[Note A]]`.
-- The **changelog** is the note at `changelogPath`. The plugin owns it (see below).
+- An **entry** is one rendered row: a timestamp and a name.
+- The **changelog** is the note at `changelogPath`.
 - An **excluded folder** is a path prefix whose notes never become entries.
-- `filterAndSort` decides _which_ notes; `renderChangelog` decides _how they read_.
+- `filterAndSort` decides _which_ notes; `generateChangelog` decides _how they read_.
 
-## The three ideas the code is built on
+## The organizing idea: a pure core Obsidian cannot reach
 
-### 1. A pure core that Obsidian cannot reach
+`src/changelog.ts` imports nothing. Not Obsidian, not `moment`, not anything. That is a hard line
+and it is the reason the project has a test suite at all: filtering, sorting, formatting, settings
+normalization and validation are all reachable from `bun test` without a running Obsidian.
 
-`src/changelog.ts` imports nothing. Not from Obsidian, not from `moment`, not from anywhere. That
-is a hard line, not a preference, and it is the reason the project has a test suite at all: the
-whole of the decision-making — filtering, sorting, formatting, every settings rule, the ownership
-guard — is reachable from `bun test` without a running Obsidian.
+The line is held by **injection at the two points where the core would otherwise need the app**:
 
-The line is held by **injection at every point where the core would otherwise need the app**:
-
-- `TimeFormatter` — production passes `window.moment`; tests pass the npm `moment` package. This
-  is why `moment` is a devDependency and never ships.
-- `LinkTextResolver` — production passes `MetadataCache.fileToLinktext`, which knows the whole
-  vault's link graph and so can tell whether a bare basename is unambiguous. That knowledge is
-  exactly what the core must not have.
-- `normalize` — Obsidian's `normalizePath`, threaded into `normalizeLoadedSettings` and the two
-  path rules.
+- A `TimeFormatter` callback. Production passes `window.moment`; tests pass the npm `moment`
+  package, which is why `moment` is a devDependency and never ships.
+- A `normalize` function, threaded into `normalizeLoadedSettings`. Production passes Obsidian's
+  `normalizePath`.
 
 `ChangelogFile` is the other half of the same idea: a structural type with the three fields the
-core actually reads (`path`, `basename`, `stat.mtime`). A real `TFile` satisfies it; so does an
+core actually reads — `path`, `basename`, `stat.mtime`. A real `TFile` satisfies it; so does an
 object literal in a test. Nothing casts, nothing mocks.
 
-The cost is stated plainly in the repo's own documentation and is worth repeating: `main.ts` and
-`settings.ts` are **untested by construction**. Every decision that matters is supposed to be on
-the other side of the line. When you add behaviour, the question "can this live in
-`changelog.ts`?" is the design question, not a style preference — a rule that ends up in an event
+The cost is stated plainly: `main.ts` and `settings.ts` are **untested by construction**. Every
+decision that matters is supposed to be on the other side of the line. When you add behaviour,
+"can this live in `changelog.ts`?" is the design question — a rule that ends up in an event
 handler is a rule no test will ever see.
 
-### 2. Settings have two trust boundaries, and every rule is shared between them
+**This is the part of the design to preserve.** Almost everything below is a place where the
+boundary is not yet doing the work it could.
 
-This is the newest idea in the codebase and the one most likely to be damaged by someone who does
-not know it is there.
+## Where the theory is thin
 
-Settings arrive from exactly two places, and neither can be trusted:
+A theory should say where it does not hold. Here it does not hold in four specific places, and
+they share a shape: **a decision that has a home in the pure layer is being made in the shell, or
+made twice.**
 
-- **`data.json` at load.** Hand-editable, sync-corruptible, and written by older versions of this
-  plugin whose validation rules were different.
-- **The settings tab at edit time.** A human typing into a text field.
+**Settings are validated at two trust boundaries that do not share rules.** Settings arrive from
+`data.json` at load and from the settings tab at edit time. Neither can be trusted — the first is
+hand-editable and sync-corruptible, the second is a human typing. `clampMaxRecentFiles` is the
+one rule both boundaries call, and its doc comment says so explicitly. No other field works that
+way. The settings tab rejects a `changelogPath` without `.md`; the loader accepts one. The tab
+substitutes a default for an empty datetime format; the loader keeps the empty string, and
+`moment().format("")` silently yields a full ISO-8601 timestamp rather than failing. The tab
+rejects a root-marker excluded folder; the loader stores it. A persisted value can therefore be
+one the settings tab would refuse to display.
 
-For most of the plugin's history each boundary validated independently, and they drifted — the
-settings tab refused a `changelogPath` without `.md` while the loader accepted one, so a vault
-could be actively writing to a file the settings tab would not display. The 1.7.0 milestone
-replaced that with a single rule:
+**Nothing owns the memory/disk invariant.** Every settings mutation is an assignment into the
+plugin's settings object followed by a fire-and-forget `saveSettingsSafely()`. There are eight of
+these. When the write fails the assignment has already happened and nothing rolls it back, so the
+plugin runs on a value that was never persisted until a restart reverts it. There is nowhere to
+put the rollback, because by the time the save is attempted the old value is gone.
 
-> **Every settings rule with a choice in it is one exported function, and both boundaries call
-> it.** `coerceChangelogPath`, `coerceDatetimeFormat`, `coerceExcludedFolders`,
-> `clampMaxRecentFiles`.
+**The plugin destroys a file it cannot identify.** `changelogPath` is free text naming any note
+in the vault, and `writeToFile` replaces that note wholesale. The only guard is `.md`, which
+every note satisfies. The path autocomplete offers existing notes as completions, so selecting
+one is a single click. There is no predicate anywhere that asks whether the file about to be
+overwritten is one this plugin wrote.
 
-Each rule takes a trailing `fallback`, and that parameter is the whole reason one function can
-serve both boundaries, because the boundaries genuinely want different behaviour on bad input:
-
-- **The loader omits it.** At load there is no prior value, so a rejected value becomes the
-  default.
-- **The settings tab passes the current value.** So a typo in a field reverts to what the user
-  had, rather than resetting the setting.
-
-There is one deliberate exception, and it will look like an inconsistency if you do not know why:
-**`coerceDatetimeFormat` is called by the settings tab without a fallback.** Clearing that field
-is the only reset-to-default gesture it offers, and it has always landed on the default. Passing
-the current value would have removed a feature while looking like tidying up.
-
-Two further properties of this layer are load-bearing and easy to destroy by accident:
-
-**Rules run exactly once per edit.** The handler calls the rule, compares the result against what
-it was given to decide whether to show a `Notice`, and hands the _coerced_ value to the commit
-path, which stores it without re-validating. `updateSettings` carries a comment telling you not
-to add a defensive re-validation there; that is not paranoia, it is the difference between one
-rule and two call sites that can disagree about which result was stored.
-
-**`normalizeLoadedSettings` builds rather than patches.** It is an object literal reading each
-field by name. Nothing from the persisted data is ever spread into the result. Two guarantees
-fall out of that construction rather than out of any guard: unknown keys from removed settings
-cannot survive a load, and a `__proto__` key in the JSON cannot reach `Object.prototype`. Both
-used to be enforced by an explicit known-key filter, which was deleted precisely because
-construction is a stronger way to get them. If you rewrite this function back into a spread plus
-fixups, you silently give up both.
-
-### 3. The plugin destroys a file it can only identify by shape
-
-`changelogPath` is a free-text setting. It can name any note in the vault, and the plugin
-replaces that note's contents wholesale on every update. The obvious guard — "is it a `.md`
-file?" — is useless, because every note in the vault is one.
-
-`isPluginGeneratedChangelog` is the real guard, and it works by grammar: every non-empty line,
-after an optional leading heading, must look like an entry. Prose fails. A checklist fails. Your
-actual notes fail, which is the point — pointing the setting at a real note used to destroy it.
-
-Its **tolerances are deliberate and each encodes a specific past failure**:
-
-- An empty file passes, because `updateChangelog`'s create path lays down `""` before the first
-  write, and the guard must not reject the file the plugin itself just created.
-- The heading slot accepts _whatever heading is currently in the file_, not the configured one.
-  Changing `changelogHeading` must not make the user's own changelog foreign to the plugin that
-  wrote it.
-
-That second tolerance is the one to reason from when you touch this function. The guard's job is
-to recognise a file written by _whatever version the user had last time_ — which is a
-compatibility surface, not an implementation detail. The entry-line pattern has not been given
-the same explicit tolerance, and that gap is filed as a finding below.
+**The render contract is positional and ordered.** `updateChangelog` calls `filterAndSort` and
+then `generateChangelog`, nine arguments across two calls, and the second formats whatever list
+it is given without filtering. Nothing enforces the ordering; a caller that skips the first step
+gets an unfiltered changelog.
 
 ## Seams
 
-**Obsidian.** Confined to `main.ts` and `settings.ts`. The API surface actually used is small:
-`Plugin`, `Vault` events and read/modify/create, `MetadataCache.fileToLinktext`, `normalizePath`,
-`debounce`, `Notice`, `PluginSettingTab`, `AbstractInputSuggest`. Note that `obsidian` ships
-**type declarations only** — there is no JavaScript in the package, so nothing from it can be
-executed in a test or a probe. This is why several decisions in the codebase are written to be
-correct under more than one reading of an Obsidian function's behaviour rather than pinned to
-the observed one; `ROOT_MARKERS` covering four spellings of the vault root is the clearest case.
+**Obsidian.** Confined to `main.ts` and `settings.ts`. The surface used is small: `Plugin`,
+`Vault` events and read/modify/create, `normalizePath`, `debounce`, `Notice`,
+`PluginSettingTab`, `AbstractInputSuggest`. Note the package ships **type declarations only** —
+there is no JavaScript in it — so nothing from Obsidian can be executed in a test or a probe.
+That is why questions like "what does `normalizePath` return for empty input" cannot be settled
+from this repository.
 
 **The vault event stream.** `modify`, `delete` and `rename`, all guarded by `autoUpdate` and
-debounced 200 ms on the **trailing** edge. Two details are scar tissue:
+routed through one debounce. Two things to know:
 
-- The `debounce` call passes `resetTimer: true` explicitly, because it defaults to `false`, which
-  makes `debounce` a _throttle_ — firing 200 ms into a burst and repeating. With autosave on, that
-  rewrote the whole changelog several times a second.
-- `rename` is handled separately from the other two because it alone carries `oldPath`, which is
-  the only value that can say the renamed file _was_ the changelog. Without it the plugin's
-  identity check compares against a stale path, the changelog lists itself, and the next write
-  recreates a ghost at the old name.
+- The `debounce` call omits `resetTimer`, which defaults to `false` and makes the function a
+  throttle — it fires 200 ms into a burst and repeats, rather than waiting for editing to stop.
+- All three events share a handler, so `rename`'s `oldPath` is discarded. The changelog's own
+  path is the one value that argument could correct, and moving the changelog note leaves the
+  setting stale.
 
-`onunload` cancels the pending timer. `registerEvent` handles the listeners; the timer is the one
-thing it does not clean up.
-
-**The settings commit path.** `updateSettings(patch)` is the only way settings change _after
-load_ — from the tab and from the rename handler alike. `loadSettings` is the other assignment to
-`this.settings`, and it is not an exception to this: it establishes the value rather than editing
-one, which is why it has no prior value to roll back to. A third assignment site would be. It keeps the previous object, merges, and **restores the
-previous object if the write rejects**, so memory and disk cannot silently diverge. Two things
-about it are non-obvious:
-
-- `excludedFolders` is _replaced_, never `push`ed or `splice`d. A mutation of the shared array
-  would survive the rollback restoring the object reference, which would defeat the whole
-  mechanism in the one case it exists for.
-- The settings tab must not close over a `settings` binding captured in `display()`.
-  `updateSettings` replaces the object, so such a binding is a snapshot that goes stale on the
-  first edit. Handlers read `this.plugin.settings` at event time. The one surviving destructure
-  is for the controls' _initial_ values, which are read during `display()` and are correct.
+`onunload` is empty. `registerEvent` releases listeners; the debounce timer is not its business.
 
 **The build.** `main.js` is committed, because that is the artifact Obsidian loads. CI runs
-`bun run build` and then `git diff --exit-code main.js`, so any change to `src/` or to a
-dependency that is not followed by a rebuild fails the PR. Bun is deliberately unpinned, so a
-bundler-output shift trips the same check; the fix is the same either way.
+`bun run build` then `git diff --exit-code main.js`, so any source or dependency change without a
+rebuild fails the PR. Bun is deliberately unpinned, so a bundler-output shift trips the same
+check — identifier mangling alone is enough — and the fix is the same: rebuild and commit.
 
 ## What this is shaped to accommodate
 
-**Another setting.** Add the field to `ChangelogSettings` and `DEFAULT_SETTINGS`, write its rule
-in `changelog.ts` with a trailing `fallback`, call it from `normalizeLoadedSettings` and from the
-handler. The typechecker will tell you if the object literal is not exhaustive. That is the whole
-procedure, and it is the procedure the 1.7.0 work existed to create.
-
-**Another output format.** `renderChangelog` is the one render entry point and takes the whole
-settings object, so a new setting that affects output does not widen a signature. But see the
-entry-line finding first: the ownership guard reads the output format, and the two must stay
-compatible across versions, not just within one.
-
 **Another filter dimension.** `filterAndSort` is pure and its tests are cheap.
+
+**Another setting** is more work than it looks. You add the field to `ChangelogSettings` and
+`DEFAULT_SETTINGS`, then remember the matching type guard in `normalizeLoadedSettings` — the
+string tuple or the boolean tuple, kept in sync by hand with nothing failing if you forget — and
+then write its validation a second time in the settings tab. That is the cost the two-boundary
+split imposes, and it is where an eighth setting will acquire the same divergence the existing
+seven have.
 
 ## What would require rethinking something fundamental
 
-**Any form of history.** "Keep the last N days even if the note was deleted", "show what changed",
-"don't lose entries older than the cutoff" — all of these break the identity that the file is a
-function of current vault state. They would need a durable store the plugin does not have, and
-they would break `isPluginGeneratedChangelog`, which recognises the file by the fact that it
-contains nothing but freshly rendered entries.
+**Any form of history.** "Keep the last N days even if deleted", "show what changed" — all break
+the identity that the file is a function of current vault state.
 
-**Incremental update.** The plugin writes the whole file every time. This is what makes the
-operation idempotent and crash-safe, and it is why there is no merge logic anywhere.
+**Incremental update.** The whole file is written every time. That is what makes the operation
+idempotent and crash-safe, and why there is no merge logic anywhere.
 
 **More than one changelog.** `changelogPath` is a scalar throughout — in the settings, in the
-rename handler's identity check, and in `filterAndSort`'s self-exclusion. Several changelogs
-would mean each one excluding all the others, and the ownership guard would have to distinguish
-_which_ changelog a file is.
+self-exclusion in `filterAndSort`, in the event guard. Several would mean each excluding all the
+others.
 
-**Anything that reacts to a setting changing.** The commit path deliberately has no side effects.
-Re-registering vault listeners when `autoUpdate` flips is the bug behind two closed issues; the
-handlers are registered once in `onload` and read `this.settings.autoUpdate` inside the guard.
-A commit path is an inviting place to put "and now react to the change", and that particular
-reaction is a regression with two issue numbers already attached to it.
+**Reacting to a setting change.** There is no commit path to hang a reaction on, and that is
+load-bearing rather than accidental: re-registering vault listeners when `autoUpdate` flips is a
+listener leak with closed issues already attached to it. The handlers are registered once in
+`onload` and read `this.settings.autoUpdate` inside the guard.
 
 ## Uncertainties
 
-Where I am inferring from code alone, and where you should check rather than trust me.
-
 **`normalizePath`'s behaviour is inferred, not observed.** The `obsidian` package has no runnable
-JavaScript, so nothing in this repository can execute it. `ROOT_MARKERS` covers four spellings of
-the vault root because I could not determine which one an empty input actually produces. The
-guard is correct under every reading, but if you ever learn the real answer, the set could shrink
-and the comment explaining it should change.
+JavaScript. What it returns for empty or separator-only input decides whether
+`validateExcludedFolder`'s guards actually catch the case they are written for, and that cannot
+be settled here.
 
-**The idempotency of `normalizePath` is assumed by the changelog-path handler**, which compares a
-rule's output against a separately normalized value. Filed below.
+**`main.ts` and `settings.ts` have no test coverage at all**, by design. Every claim in this
+document about the settings tab, the event wiring and the write path comes from reading, not
+execution.
 
-**I am confident about the _what_ of the 1.7.0 settings consolidation and less so about its
-edges.** The `fallback` parameter's split — loader omits, tab passes current, datetime tab passes
-neither — is coherent and documented in the functions themselves, but it is three different
-behaviours from one signature, and I cannot rule out that a fourth boundary would want a fourth.
-
-**`src/main.ts` and `src/settings.ts` have no test coverage at all**, by design. Every claim in
-this document about the settings tab's behaviour, the rollback, and the event wiring is from
-reading, not from execution. The typechecker carries real weight there —
-`Partial<ChangelogSettings>` rejects a misspelled key — but it cannot see a handler that reads a
-stale binding or a notice that fires on the wrong condition.
-
-**The plugin's behaviour on a `data.json` written by 1.6.x and earlier changed in 1.7.0**, and I
-am reasoning about that from the code rather than from a migration I watched. A persisted
-`changelogPath` without `.md`, an empty `datetimeFormat`, or an `excludedFolders` holding a root
-marker now load differently than they did. This is intended and is recorded in `CHANGELOG.md`,
-but it is the class of change where an unnoticed case is most likely.
+**This theory describes reverted code, and I did not witness the decision to revert it.** The
+1.6.0/1.7.0 milestone addressed most of the thin spots in the section above. Whether those
+weaknesses are acceptable, or simply pending a differently-packaged fix, is a question the commit
+history does not answer and this document should not pretend to.
 
 ## Findings
 
-Filed during this pass. Each is a discrete, actionable tension between the code and the theory
-above — not an uncertainty, which belongs in the section before this one.
-
-| Finding                                                                                                                                                                                                         | Severity | Where                                          | Status                                                                   |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ---------------------------------------------- | ------------------------------------------------------------------------ |
-| `changelogHeading` is the one setting whose rule is still implemented at both boundaries, against the principle the rest of the layer now follows                                                               | medium   | `src/changelog.ts:164`, `src/settings.ts:249`  | [#236](https://github.com/philoserf/obsidian-vault-changelog/issues/236) |
-| The ownership guard's entry-line grammar is coupled to the renderer's output format, and the round-trip test pins agreement only within a single build — not the cross-version recognition the guard exists for | medium   | `src/changelog.ts:172`, `src/changelog.ts:295` | [#237](https://github.com/philoserf/obsidian-vault-changelog/issues/237) |
-| The changelog-path handler normalizes twice and compares against the middle result, so its error notice depends on an idempotency assumption nothing states or can test                                         | low      | `src/settings.ts:130-146`                      | [#238](https://github.com/philoserf/obsidian-vault-changelog/issues/238) |
+| Finding                                                                                             | Where       | Status                                                                       |
+| --------------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------- |
+| Thirteen defects fixed in 1.6.0/1.7.0 are present again on `main`, while their issues remain closed | `src/`      | see [#247](https://github.com/philoserf/obsidian-vault-changelog/issues/247) |
+| README has no troubleshooting for failed installs and updates on Windows                            | `README.md` | [#244](https://github.com/philoserf/obsidian-vault-changelog/issues/244)     |
