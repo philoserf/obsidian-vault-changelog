@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.6.0
+
+### Changed
+
+- **The plugin now refuses to overwrite a note it did not generate.** Before writing, it checks whether the file at "Changelog path" looks like a changelog this plugin produced, and refuses with a notice if not. Nothing guarded this before — the only check was that the path ended in `.md`, which every note satisfies — so pointing the setting at an existing note destroyed it on the next update (#197)
+- **Path suggestions for "Changelog path" and "Add excluded folder" now offer folders only.** Previously every markdown file in the vault was offered as a completion for the changelog path, and selecting one committed it in a single click, which was the fastest route to the overwrite above (#197)
+- Entries for notes that share a filename now show enough path to tell them apart, in both wiki-link and plain-text mode. `Projects/Meeting Notes.md` and `Archive/Meeting Notes.md` previously produced two identical rows whose links both resolved to whichever note the vault picked (#202)
+- Auto-update now waits until editing stops before regenerating, rather than firing 200 ms into a burst and repeating. During sustained typing with autosave on, the changelog was being rewritten several times a second (#193)
+
+### Fixed
+
+- Renaming or moving the changelog note keeps the setting pointing at it. Previously the setting went stale, the changelog began listing itself, and a ghost copy reappeared under the old name (#196)
+- A failed update now says why. All three failure paths reported the same four words and discarded the error, including the one message that named the failing path (#217)
+- Disabling or reloading the plugin within 200 ms of an edit no longer writes to the vault afterwards. The pending timer was never cancelled, so a torn-down instance could still run an update — and during a plugin update, two instances could write the same file (#201)
+- The README named a command the palette does not show. Obsidian prefixes the plugin name, so the entry reads "Vault Changelog: Update Changelog" (#212)
+
+### Internal
+
+- `generateChangelog` is now `renderChangelog`, taking the whole settings object plus an injected link-text resolver rather than nine positional arguments across two calls (#195, #202)
+- `writeToFile` folded into `updateChangelog`; it had one caller that always passed the same path (#218)
+- Test files are typechecked again — `tsconfig.json` had excluded them, so fixture drift in the structurally-typed pure layer was invisible to `tsc` (#214)
+- CI workflow token scoped to `contents: read` (#198)
+- Removed an unreachable build-failure branch in `build.ts` — `Bun.build` rejects rather than returning `success: false` — and a stale `scripts/**/*.ts` glob from `biome.json` (#194)
+- `THEORY.md` and `WALKTHROUGH.md` regenerated. The walkthrough now labels every snippet by file and symbol instead of line range, which is what had let it rot: only 9 of its 29 previous probes still reproduced
+- Test suite grown from 30 to 47
+
+### Upgrading
+
+If your changelog note contains anything other than a heading and the plugin's own entry lines — notes you added by hand, for instance — the first update after upgrading will refuse to overwrite it and show a notice. Clear the file, or point "Changelog path" somewhere new, and updates resume. A changelog written by 1.5.x and left alone is unaffected.
+
 ## 1.5.4
 
 ### Fixed
