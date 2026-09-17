@@ -156,8 +156,10 @@ debounced 200 ms on the **trailing** edge. Two details are scar tissue:
 `onunload` cancels the pending timer. `registerEvent` handles the listeners; the timer is the one
 thing it does not clean up.
 
-**The settings commit path.** `updateSettings(patch)` is the only way settings change — from the
-tab and from the rename handler alike. It keeps the previous object, merges, and **restores the
+**The settings commit path.** `updateSettings(patch)` is the only way settings change _after
+load_ — from the tab and from the rename handler alike. `loadSettings` is the other assignment to
+`this.settings`, and it is not an exception to this: it establishes the value rather than editing
+one, which is why it has no prior value to roll back to. A third assignment site would be. It keeps the previous object, merges, and **restores the
 previous object if the write rejects**, so memory and disk cannot silently diverge. Two things
 about it are non-obvious:
 

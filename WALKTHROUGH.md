@@ -986,7 +986,13 @@ await Bun.write("manifest.json", `${JSON.stringify(manifest, null, 2)}\n`);
 
 The subtle part is that `minAppVersion` is read _before_ the version field is overwritten.
 `release.yml` triggers on a bare `X.Y.Z` tag and creates the GitHub release itself, with build
-provenance attestation — so pushing the tag is the publish step.
+provenance attestation.
+
+That makes the tag the publish action, and it is the reason nobody pushes one by hand. Releases
+go through the `release-gate` skill and then `release-ship`, which is user-invoked; the tag
+points at the merged commit of a `release/<version>` prep PR that carries the version bump, the
+changelog entry and the regenerated narrative documents together. A tag pushed directly would
+publish whatever tree it happened to name.
 
 CI runs `bun run build` and then `git diff --exit-code main.js`. Since the committed bundle is
 what ships, any change to `src/` or to a dependency that is not followed by a rebuild fails the
