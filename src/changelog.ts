@@ -87,6 +87,41 @@ export function isValidChangelogPath(normalizedPath: string): boolean {
   return normalizedPath.endsWith(".md");
 }
 
+/** An entry line in the shape generateChangelog emits: "- <time> · <name>". */
+const ENTRY_LINE = /^- .+ · .+$/;
+
+/**
+ * Does this file look like one this plugin wrote? The plugin replaces the
+ * file at changelogPath wholesale, and every note in the vault satisfies the
+ * only other check there is (`.md`), so the shell asks this before
+ * overwriting and refuses a file that is someone else's note.
+ *
+ * Deliberately tolerant of a heading it does not recognise: the heading slot
+ * accepts whatever is currently there, so changing the changelogHeading
+ * setting cannot make the user's own changelog foreign to the plugin that
+ * wrote it. What it will not tolerate is prose where entries should be.
+ */
+export function isPluginGeneratedChangelog(
+  content: string,
+  changelogHeading: string,
+): boolean {
+  const lines = content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+
+  // Empty: writeToFile's create path lays down "" before the first modify.
+  if (lines.length === 0) return true;
+
+  // A heading and nothing else -- a configured heading over an empty vault.
+  const heading = changelogHeading.trim();
+  if (lines.length === 1 && heading !== "" && lines[0] === heading) return true;
+
+  // Otherwise: entries, optionally under one leading heading line.
+  const body = ENTRY_LINE.test(lines[0]) ? lines : lines.slice(1);
+  return body.length > 0 && body.every((line) => ENTRY_LINE.test(line));
+}
+
 export type ExcludedFolderVerdict = "ok" | "invalid" | "duplicate";
 
 /**

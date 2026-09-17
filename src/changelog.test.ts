@@ -6,6 +6,7 @@ import {
   DEFAULT_SETTINGS,
   filterAndSort,
   generateChangelog,
+  isPluginGeneratedChangelog,
   isValidChangelogPath,
   normalizeLoadedSettings,
   validateExcludedFolder,
@@ -274,6 +275,66 @@ describe("isValidChangelogPath", () => {
   test("rejects non-markdown paths", () => {
     expect(isValidChangelogPath("Changelog.txt")).toBe(false);
     expect(isValidChangelogPath("Changelog")).toBe(false);
+  });
+});
+
+describe("isPluginGeneratedChangelog", () => {
+  const entries =
+    "- 2026-01-01T0900 \u00b7 [[Note A]]\n- 2026-01-02T1030 \u00b7 [[Note B]]\n";
+
+  test('treats an empty file as its own (writeToFile creates with "")', () => {
+    expect(isPluginGeneratedChangelog("", "")).toBe(true);
+    expect(isPluginGeneratedChangelog("\n\n", "")).toBe(true);
+  });
+
+  test("accepts entries with no heading", () => {
+    expect(isPluginGeneratedChangelog(entries, "")).toBe(true);
+  });
+
+  test("accepts a heading followed by entries", () => {
+    expect(
+      isPluginGeneratedChangelog(`## Recent\n\n${entries}`, "## Recent"),
+    ).toBe(true);
+  });
+
+  test("accepts the configured heading alone, for an empty vault", () => {
+    expect(isPluginGeneratedChangelog("## Recent\n", "## Recent")).toBe(true);
+  });
+
+  test("still accepts its own file after the heading setting changed", () => {
+    // The heading slot tolerates a heading it does not recognise, so editing
+    // changelogHeading cannot lock the plugin out of the file it wrote.
+    expect(
+      isPluginGeneratedChangelog(
+        `## Old heading\n\n${entries}`,
+        "## New heading",
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects a one-line note", () => {
+    expect(isPluginGeneratedChangelog("My grocery list\n", "")).toBe(false);
+  });
+
+  test("rejects prose", () => {
+    expect(
+      isPluginGeneratedChangelog("Meeting notes\n\nWe agreed to ship.\n", ""),
+    ).toBe(false);
+  });
+
+  test("rejects a note that merely contains a list item", () => {
+    expect(
+      isPluginGeneratedChangelog(
+        "Notes\n\n- milk \u00b7 eggs\n\nAnd then prose.\n",
+        "",
+      ),
+    ).toBe(false);
+  });
+
+  test("rejects a checklist note", () => {
+    expect(
+      isPluginGeneratedChangelog("# Project\n\n- [ ] one\n- [ ] two\n", ""),
+    ).toBe(false);
   });
 });
 

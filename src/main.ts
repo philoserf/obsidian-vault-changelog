@@ -12,6 +12,7 @@ import {
   DEFAULT_SETTINGS,
   filterAndSort,
   generateChangelog,
+  isPluginGeneratedChangelog,
   normalizeLoadedSettings,
 } from "./changelog";
 import { ChangelogSettingsTab } from "./settings";
@@ -108,6 +109,17 @@ export default class ChangelogPlugin extends Plugin {
       }
     }
     if (file instanceof TFile) {
+      // The plugin owns the file at changelogPath and replaces it wholesale,
+      // so confirm this is a file the plugin wrote before destroying it. The
+      // path can be typed to any note in the vault.
+      const existing = await this.app.vault.read(file);
+      if (
+        !isPluginGeneratedChangelog(existing, this.settings.changelogHeading)
+      ) {
+        throw new Error(
+          `Refusing to overwrite ${path}: it does not look like a changelog this plugin generated. Point "Changelog path" at a new or empty note, or clear that file first.`,
+        );
+      }
       await this.app.vault.modify(file, content);
     } else {
       new Notice(`Could not update changelog at path: ${path}`);

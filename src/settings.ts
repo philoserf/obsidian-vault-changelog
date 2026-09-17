@@ -28,14 +28,13 @@ class PathSuggest extends AbstractInputSuggest<string> {
   private getPaths(): string[] {
     if (this.cachedPaths) return this.cachedPaths;
 
+    // Folders only. This suggester serves both the changelog-path field and
+    // the excluded-folder field, and neither wants an existing note: the
+    // changelog path is overwritten wholesale, so completing to a note is
+    // the fast way to lose it, and an excluded *folder* is never a file.
     const paths: string[] = [];
     for (const folder of this.app.vault.getAllFolders()) {
       paths.push(`${folder.path}/`);
-    }
-    for (const file of this.app.vault.getFiles()) {
-      if (file.extension === "md") {
-        paths.push(file.path);
-      }
     }
     this.cachedPaths = paths;
     return paths;
