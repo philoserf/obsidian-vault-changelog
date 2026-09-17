@@ -360,6 +360,50 @@ describe("isPluginGeneratedChangelog", () => {
   });
 });
 
+describe("renderChangelog / isPluginGeneratedChangelog round-trip", () => {
+  // The guard must never refuse the plugin's own output. This became
+  // expressible only once renderChangelog was the single entry point; before
+  // that there was no one function producing the file's whole content.
+  const mk = (path: string, basename: string, mtime: number) => ({
+    path,
+    basename,
+    stat: { mtime },
+  });
+  const byPath = (file: { path: string }) => file.path.replace(/\.md$/, "");
+
+  const cases: [
+    string,
+    ReturnType<typeof mk>[],
+    Partial<typeof DEFAULT_SETTINGS>,
+  ][] = [
+    ["empty vault", [], {}],
+    ["empty vault with a heading", [], { changelogHeading: "## Recent" }],
+    ["entries only", [mk("A.md", "A", 1), mk("B.md", "B", 2)], {}],
+    [
+      "entries under a heading",
+      [mk("A.md", "A", 1)],
+      { changelogHeading: "## Recent" },
+    ],
+    ["plain text mode", [mk("A.md", "A", 1)], { useWikiLinks: false }],
+    [
+      "plain text under a heading",
+      [mk("A.md", "A", 1)],
+      { useWikiLinks: false, changelogHeading: "# Log" },
+    ],
+    ["duplicate basenames", [mk("x/N.md", "N", 1), mk("y/N.md", "N", 2)], {}],
+  ];
+
+  for (const [label, files, overrides] of cases) {
+    test(`accepts its own output: ${label}`, () => {
+      const settings = { ...DEFAULT_SETTINGS, ...overrides };
+      const output = renderChangelog(files, settings, formatter, byPath);
+      expect(
+        isPluginGeneratedChangelog(output, settings.changelogHeading),
+      ).toBe(true);
+    });
+  }
+});
+
 describe("validateExcludedFolder", () => {
   test("accepts a new folder", () => {
     expect(validateExcludedFolder("Archive", [])).toBe("ok");
