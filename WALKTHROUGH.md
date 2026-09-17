@@ -1,50 +1,45 @@
 # Walkthrough
 
-How Vault Changelog works, start to finish. Read it top to bottom; it follows the call chain
-rather than the directory listing.
+How Vault Changelog works, start to finish. It follows the call chain rather than the directory
+listing, so read it top to bottom.
 
-Every snippet is labelled with its **file and symbol** rather than a line range, so a quote still
-points at the right thing after an unrelated edit above it. Snippets are sliced directly out of
-the source and carry a `<!-- prettier-ignore -->` marker, because prettier reformats code inside
-fenced blocks — it dedents them and rejoins wrapped lines — and that silently rots quotes while
-leaving them looking correct.
-
-**This document describes 1.5.4.** The 1.6.0 and 1.7.0 releases were withdrawn and their code
-reverted off `main`, so anything you may have read about an ownership guard, per-field settings
-rules, or a single settings commit path describes code that is no longer here. Several rough
-edges below were fixed in those releases and are, as of this document, unfixed again.
+Every snippet is labelled with its **file and symbol** rather than a line range, so a quote keeps
+pointing at the right thing after an unrelated edit above it. Each one is sliced directly out of
+the source and carries a `<!-- prettier-ignore -->` marker: prettier reformats code inside fenced
+blocks — it dedents them and rejoins wrapped lines — which rots a quote while leaving it looking
+perfectly fine.
 
 ## Overview
 
-The plugin maintains a note listing the vault's most recently edited files. Enable auto-update
-and it rewrites that note whenever you edit, rename or delete something; or run the command
-yourself from the palette.
+The plugin maintains a note listing the vault's most recently edited files, newest first, each as
+a link. Run it from the command palette, or turn on auto-update and it rewrites that note
+whenever you edit, rename or delete something.
 
-The single most important thing to know before reading the code: **the changelog file is
-overwritten in full on every update.** Nothing accumulates, nothing is merged, no history is
-kept. Run it twice against an unchanged vault and you get the same string both times.
+One fact governs everything else: **the changelog note is overwritten in full on every update.**
+Nothing accumulates, nothing merges, no history is kept. The output is a function of the vault's
+current state, so running it twice against an unchanged vault produces the same bytes.
 
-TypeScript, built with Bun's native bundler into a single CommonJS `main.js` that Obsidian loads.
-`main.js` is committed, because that committed file is what ships.
+TypeScript, bundled by Bun into a single CommonJS `main.js` that Obsidian loads. That file is
+committed to the repository, because the committed file is what ships.
 
 ## Architecture
 
-Three source files, and the split between the first and the other two is the one that matters.
+Three source files, and one boundary that matters more than the directory layout.
 
-| File               | Role                                                               | Tested                  |
-| ------------------ | ------------------------------------------------------------------ | ----------------------- |
-| `src/changelog.ts` | Filtering, sorting, formatting, settings normalization, validation | Exhaustively — 30 tests |
-| `src/main.ts`      | The Obsidian plugin: lifecycle, events, file I/O                   | Not at all              |
-| `src/settings.ts`  | The settings tab and its path autocomplete                         | Not at all              |
+| File               | Contains                                                           | Tests |
+| ------------------ | ------------------------------------------------------------------ | ----- |
+| `src/changelog.ts` | Filtering, sorting, formatting, settings normalization, validation | 30    |
+| `src/main.ts`      | Plugin lifecycle, vault events, file I/O, persistence              | none  |
+| `src/settings.ts`  | The settings tab and its path autocomplete                         | none  |
 
-`src/changelog.ts` imports nothing — not Obsidian, not `moment`. That is what makes it testable
-without a running Obsidian, and the rule is held by injecting anything it would otherwise need:
-a `TimeFormatter` callback for time formatting, and a `normalize` function for path handling.
+`src/changelog.ts` has **no imports at all** — not Obsidian, not `moment`. That is what lets the
+whole test suite run without a live Obsidian, and it is held by handing the module anything it
+would otherwise reach for: a time formatter, and a path normalizer.
 
-`main.ts` and `settings.ts` are untested **by construction**. That is the deal: keep the
-decisions on the pure side and the untested side stays thin enough to read.
+`main.ts` and `settings.ts` have no tests by construction. The bargain is that the decisions live
+on the pure side, leaving the untested side thin enough to read in one sitting.
 
-## Loading
+## Starting up
 
 `src/main.ts` — `ChangelogPlugin.onload`
 
@@ -79,18 +74,18 @@ decisions on the pure side and the untested side stays thin enough to read.
   }
 ```
 
-Settings load first, because the settings tab and every handler read them. Then the command, then
-three vault listeners.
+Settings load first, because the tab and every handler read them. Then the command, then three
+vault listeners.
 
-`handler` guards on three things: auto-update is on, the changed thing is a file rather than a
-folder, and it is not the changelog itself. That last check is what stops the plugin triggering
-itself in a loop — writing the changelog is a `modify` event.
+`handler` requires three things before it does anything: auto-update is on, the changed thing is
+a file rather than a folder, and it is not the changelog itself. That last test is what keeps the
+plugin from retriggering forever — writing the changelog is itself a `modify` event.
 
-**Note that all three events share one handler, `rename` included.** `rename` is the only event
-that also carries an `oldPath` argument, and this code does not take it. The consequence is worth
-understanding: if you move or rename the changelog note itself, `settings.changelogPath` still
-points at the old location. The guard then compares the renamed file against a stale path, the
-changelog begins listing itself, and the next write recreates a file at the old name.
+All three events share that one handler, **`rename` included**. `rename` is the only vault event
+that also receives an `oldPath`, and nothing here takes it. So when the changelog note itself is
+moved or renamed, `settings.changelogPath` keeps pointing at where it used to be: the guard above
+starts comparing against a stale path, the changelog begins listing itself, and the next write
+creates a fresh file back at the old location.
 
 `src/main.ts` — `ChangelogPlugin.loadSettings`
 
@@ -104,8 +99,8 @@ changelog begins listing itself, and the next write recreates a file at the old 
   }
 ```
 
-`normalizePath` is passed in rather than imported by `changelog.ts`, which is one of the two
-injection points keeping the pure module Obsidian-free.
+`normalizePath` is passed in rather than imported inside `changelog.ts` — one of the two places
+Obsidian is handed to the pure module instead of reached for.
 
 ## The debounce
 
@@ -122,11 +117,11 @@ export default class ChangelogPlugin extends Plugin {
   }, 200);
 ```
 
-Obsidian's `debounce` takes a third `resetTimer` parameter which **defaults to `false`**, and it
-is not passed here. With that default the function is a _throttle_ rather than a debounce: it
-fires 200 ms after the **first** event of a burst, then again for the next burst. During
-sustained typing with Obsidian autosaving, that regenerates the whole changelog repeatedly rather
-than once when editing stops.
+Obsidian's `debounce` takes a third `resetTimer` argument that defaults to `false`, and it is not
+passed here. With that default the function behaves as a **throttle**: it fires 200 ms after the
+_first_ event in a burst, then again for the next burst, rather than waiting for the burst to
+end. Typing in a vault with autosave on regenerates the whole changelog repeatedly while you
+work.
 
 `src/main.ts` — `ChangelogPlugin.onunload`
 
@@ -135,11 +130,13 @@ than once when editing stops.
   onunload(): void {}
 ```
 
-`onunload` is empty. `registerEvent` releases the listeners automatically, but the debounce timer
-is not something it knows about — so a pending timer can still fire after the plugin has been
-disabled, against a torn-down instance.
+Nothing to undo — `registerEvent` releases the three listeners on its own. The timer is the one
+thing it does not know about, so a debounce already in flight when the plugin is disabled will
+still fire, against an instance Obsidian has finished with.
 
-## One update, end to end
+## A single update
+
+Both entry points — the command and the debounced handler — call `updateChangelog`.
 
 `src/main.ts` — `ChangelogPlugin.updateChangelog`
 
@@ -163,14 +160,13 @@ disabled, against a torn-down instance.
   }
 ```
 
-Two calls, nine arguments between them, and the ordering is a contract the caller has to keep:
-`filterAndSort` must run first, because `generateChangelog` formats whatever list it is handed
-without filtering anything itself. Adding a setting that affects output means widening a
-signature and this call site.
+Two calls and nine arguments, with an ordering the caller has to honour: `filterAndSort` runs
+first, because `generateChangelog` formats whatever list it receives and filters nothing itself.
+A new setting that affects output means widening a signature here and at the definition.
 
-The last argument is the second injection point. The formatter wraps Obsidian's
-globally-installed moment, so nothing is bundled; tests pass the npm `moment` package instead,
-which is why `moment` is a devDependency and never ships.
+The last argument is the second injection point. It closes over Obsidian's globally-installed
+moment, so nothing is bundled; the tests pass the npm `moment` package in its place, which is why
+`moment` is a devDependency and never ships.
 
 `src/main.ts` — `ChangelogPlugin.writeToFile`
 
@@ -195,20 +191,22 @@ which is why `moment` is a devDependency and never ships.
   }
 ```
 
-The `catch` is a TOCTOU race, not defensive padding. Between `getAbstractFileByPath` returning
-nothing and `create` running, a concurrent vault event can create the file; `create` then throws
-on a file that now exists, and looking it up again is the recovery.
+The `catch` is a genuine race rather than defensive habit. Between `getAbstractFileByPath`
+returning nothing and `create` running, a concurrent vault event can create the file; `create`
+then throws on something that now exists, and looking it up a second time is the recovery.
 
-**What this method does not do is check what it is about to destroy.** `changelogPath` is free
-text and can name any note in the vault; the only validation anywhere is that it ends in `.md`,
-which every note satisfies. `vault.modify` then replaces that note's entire contents. Pointing
-the setting at an existing note — which the path autocomplete below makes easy — loses it.
+**Nothing here examines what it is about to replace.** `changelogPath` is free text that can name
+any note in the vault, the only check anywhere is that it ends in `.md` — which every note does —
+and `vault.modify` then writes over the whole file. The path autocomplete in the settings tab
+offers existing notes as completions, so selecting one is a single click.
 
-Note also that both failure paths report the same four words. `updateChangelog`'s two callers
-each `.catch()` with `new Notice("Failed to update changelog")`, discarding the error, so the
-message here naming the failing path is built and never read.
+Both failure paths also report the same four words: each caller wraps this in
+`.catch(() => new Notice("Failed to update changelog"))`, discarding the error, so the message
+below that names the failing path is constructed and never seen.
 
 ## The pure core
+
+### Choosing and ordering
 
 `src/changelog.ts` — `filterAndSort`
 
@@ -234,14 +232,18 @@ export function filterAndSort(
 }
 ```
 
-Three filters in one pass: the changelog never lists itself, excluded folders are prefix matches,
-and the rest sort newest-first and truncate. The `folder.endsWith("/")` ternary is not cosmetic —
-without the appended separator, excluding `Arch` would also exclude `Archive/`, because
-`"Archive/x.md".startsWith("Arch")` is true.
+Three decisions in one pass: the changelog never lists itself, excluded folders are prefix
+matches, and what survives is sorted newest-first and truncated.
 
-Matching is exact and case-sensitive. On a case-insensitive filesystem a user who types
-`archive` for a folder named `Archive` gets a row that looks like a working rule and excludes
+The `folder.endsWith("/")` ternary earns its place. Without appending the separator, excluding
+`Notes` would also exclude `Notes2/` and `Notebook/`, because both paths start with `Notes`. The
+suite pins exactly that case.
+
+Matching is exact and case-sensitive, so on a case-insensitive filesystem a user who types
+`archive` for a folder named `Archive` gets a settings row that looks like a rule and excludes
 nothing.
+
+### Formatting
 
 `src/changelog.ts` — `generateChangelog`
 
@@ -264,12 +266,13 @@ export function generateChangelog(
 }
 ```
 
-It takes an already-filtered list — see the ordering contract above — and five positional
-parameters.
+It receives an already-filtered list and four more positional parameters.
 
-`file.basename` is used directly, which is where two notes sharing a filename become
-indistinguishable: `Projects/Meeting Notes.md` and `Archive/Meeting Notes.md` both render as
-`[[Meeting Notes]]`, and both links resolve to whichever note the vault picks.
+`file.basename` is used directly, which is where two notes sharing a filename become one row
+repeated: `Projects/Meeting Notes.md` and `Archive/Meeting Notes.md` both render as
+`[[Meeting Notes]]`, and both links resolve to whichever the vault picks.
+
+### Settings coming off disk
 
 `src/changelog.ts` — `clampMaxRecentFiles`
 
@@ -287,11 +290,13 @@ export function clampMaxRecentFiles(value: unknown): number {
 }
 ```
 
-Documented as the one authoritative clamping rule, called from both load-time and the settings
-UI. Worth reading carefully: `Number()` runs **before** the finiteness test, and `Number()` maps
-`null`, `""`, `[]` and `false` to a perfectly finite `0` — which the clamp then raises to `1`. A
-`data.json` carrying any of those shapes yields a changelog exactly one entry long, rather than
-the documented fallback to the default.
+Documented as the one authoritative rule for this field, and called by both the loader and the
+settings tab — the only field where that is true.
+
+Read the order carefully. `Number()` runs _before_ the finiteness test, and `Number()` maps
+`null`, `""`, `[]` and `false` to a perfectly finite `0`, which the clamp then lifts to `1`. A
+`data.json` holding any of those produces a changelog exactly one entry long rather than the
+documented fallback to 25.
 
 `src/changelog.ts` — `normalizeLoadedSettings`
 
@@ -339,14 +344,19 @@ export function normalizeLoadedSettings(
 }
 ```
 
-Persisted data is not trusted. The function copies known keys into a fresh object, spreads that
-over the defaults, then walks the result three more times — a string-key tuple, a boolean-key
-tuple, and an array special case — restoring defaults wherever the runtime type is wrong. The
-`knownKeys` filter is what stops a renamed or removed setting lingering in `data.json`, and
-running it before the spread is also what keeps a `__proto__` key out of the result.
+Persisted data is treated as hostile, and rightly — it is hand-editable, sync-corruptible, and
+may have been written by an older version.
 
-The two `as const` key tuples have to be kept in sync with `ChangelogSettings` by hand. Nothing
-fails if you add an eighth setting and forget.
+The function copies known keys into a fresh object, spreads that over the defaults, then walks
+the result three more times restoring defaults wherever the runtime type is wrong: a string-key
+tuple, a boolean-key tuple, and a special case for the array. The `knownKeys` filter is what
+keeps a renamed or removed setting from lingering, and running it before the spread is also what
+keeps a `__proto__` key in the JSON from reaching the result.
+
+The two `as const` tuples are maintained by hand. Add an eighth setting, forget to list it in the
+matching tuple, and nothing fails.
+
+### Validating what the user types
 
 `src/changelog.ts` — `isValidChangelogPath`
 
@@ -358,8 +368,8 @@ export function isValidChangelogPath(normalizedPath: string): boolean {
 }
 ```
 
-The entire path validation. Every note in the vault ends in `.md`, so this accepts every note in
-the vault.
+The whole of the path validation. Every note in the vault ends in `.md`, so this accepts every
+note in the vault.
 
 `src/changelog.ts` — `validateExcludedFolder`
 
@@ -375,10 +385,10 @@ export function validateExcludedFolder(
 }
 ```
 
-Three-valued, so the caller can tell the two failure modes apart. Note the guards are written
-against raw input — empty string, `"."` — while the parameter is named `normalizedFolder` and the
-only caller normalizes first. Whichever marker `normalizePath` returns for empty input, if it is
-not exactly `"."` it passes as valid.
+Three-valued, so a caller can distinguish the two failure modes. Note that the guards test raw
+shapes — empty string, `"."` — while the parameter is named `normalizedFolder` and the only
+caller normalizes first. Whatever `normalizePath` returns for empty input, unless it is exactly
+`"."`, passes as valid.
 
 ## The settings tab
 
@@ -403,10 +413,10 @@ not exactly `"."` it passes as valid.
   }
 ```
 
-The suggester offers folders **and every markdown file in the vault**, and it serves both the
-excluded-folder field and the changelog-path field. For the changelog path that means existing
-notes are offered as completions, and selecting one is a single click — combined with
-`writeToFile`'s lack of an ownership check, that is the fastest route to overwriting a note.
+The suggester collects folders **and every markdown file in the vault**, and the same class
+serves both the excluded-folder field and the changelog-path field. For the changelog path that
+means your existing notes appear as completions for a setting whose file gets overwritten in
+full.
 
 `src/settings.ts` — `ChangelogSettingsTab.display`
 
@@ -424,8 +434,8 @@ notes are offered as completions, and selecting one is a single click — combin
         });
 ```
 
-The changelog-path field validates on `blur` rather than per keystroke, which is right: a
-half-typed path is not a wrong path.
+The changelog-path field commits on `blur` rather than per keystroke, which is the right choice:
+a half-typed path is not a wrong path.
 
 `src/settings.ts` — `ChangelogSettingsTab.display`
 
@@ -451,17 +461,17 @@ half-typed path is not a wrong path.
     });
 ```
 
-The datetime field does not. `onChange` fires per keystroke and does three things — substitutes
-the default for an empty field, writes it back into the input with `setValue`, and saves. Select
-all and delete before retyping, which is the ordinary way to replace a value, and the default is
-stuffed into the field and persisted over the user's format before the first character of the
-replacement is typed.
+The datetime field does not. `onChange` fires on every keystroke and does three things at once —
+substitutes the default when the field is empty, writes that back into the input with
+`setValue`, and saves. Selecting all and deleting before retyping, which is how anyone replaces a
+value, therefore puts the default into the box and into `data.json` before the first character of
+the replacement is typed.
 
-`datetimePreview` is also declared here without an initializer and read inside that closure
-twenty lines before it is assigned. The ordering is forced — `descEl` does not exist until the
-`Setting` is constructed — and it is safe only because `onChange` cannot fire until `display()`
-has returned. TypeScript's definite-assignment analysis does not reach into closures, so nothing
-checks that.
+`datetimePreview` is declared just above without an initializer and read inside that closure,
+twenty lines before the assignment below it. The ordering is forced, since `descEl` does not
+exist until the `Setting` has been constructed, and it is safe only because `onChange` cannot
+fire until `display()` has returned. TypeScript's definite-assignment analysis does not follow
+closures, so nothing checks that reasoning still holds after an edit.
 
 `src/settings.ts` — `ChangelogSettingsTab.display`
 
@@ -483,10 +493,9 @@ checks that.
         });
 ```
 
-The range rule is implemented twice and the halves disagree. This pre-check rejects `0` and `abc`
-by reverting with a notice; anything above the maximum, or a fraction, falls through to
-`clampMaxRecentFiles` and is rewritten silently. The notice names a range — 1 to 500 — that the
-handler only enforces at the low end.
+The range rule is written twice here and the two halves disagree. This pre-check rejects `0` and
+`abc` by reverting with a notice; `1000` and `25.9` fall through to `clampMaxRecentFiles` and are
+rewritten silently. The notice names a range the handler only enforces at one end.
 
 `src/settings.ts` — `ChangelogSettingsTab.display`
 
@@ -513,12 +522,14 @@ handler only enforces at the low end.
         });
 ```
 
-`validateExcludedFolder` returns three verdicts and this handler uses two. `"duplicate"` falls
-off the end: no notice, the input is not cleared, the list is not re-rendered. Adding a folder
-that is already listed is indistinguishable from a dead button.
+`validateExcludedFolder` returns three verdicts and this handler acts on two. `"duplicate"`
+falls off the end: no notice, the input is not cleared, the list is not redrawn. Adding a folder
+already in the list is indistinguishable from a dead button.
 
-Note also the shape shared by all seven fields — assign directly into the plugin's settings
-object, then call `saveSettingsSafely()`:
+## Saving
+
+Every field above follows the same two steps — assign into the plugin's settings object, then
+call `saveSettingsSafely()`. There are eight such pairs.
 
 `src/main.ts` — `ChangelogPlugin.saveSettings`
 
@@ -535,8 +546,28 @@ object, then call `saveSettingsSafely()`:
   }
 ```
 
-The assignment has already happened when the persist fails, and nothing rolls it back. The user
-gets a notice; the plugin keeps running on the value; the next restart silently reverts it.
+The assignment has already happened by the time the write is attempted, and nothing restores it
+if the write rejects. The user sees a notice, the plugin carries on using the new value, and the
+next restart silently reverts to what was actually on disk.
+
+## Tests
+
+The suite covers `changelog.ts` only, and injection is what makes that possible.
+
+`src/changelog.test.ts` — `formatter`
+
+<!-- prettier-ignore -->
+```ts
+const formatter = (mtime: number, fmt: string) => moment(mtime).format(fmt);
+```
+
+Time formatting arrives as a function, so the tests supply the npm `moment` package where
+production supplies Obsidian's global. The normalizer is substituted the same way — `identity`
+where normalization is irrelevant to the case, and a trailing-slash stripper where it is not.
+
+Fixtures are plain object literals. `ChangelogFile` is a structural interface of the three fields
+the core reads — `path`, `basename`, `stat.mtime` — so a real `TFile` satisfies it and so does
+`{ path, basename, stat: { mtime } }`. There is no mocking anywhere.
 
 ## Build and release
 
@@ -560,25 +591,31 @@ async function build() {
 }
 ```
 
-`obsidian` and `electron` are marked external and must never be bundled — Obsidian provides both
-at runtime. Minification is on except in watch mode, where a linked sourcemap is more useful.
+`obsidian` and `electron` are marked external and must never be bundled; Obsidian supplies both
+at runtime. Minification is on except in watch mode, where a linked sourcemap is more use.
 
-CI runs `bun run build` and then `git diff --exit-code main.js`. Since the committed bundle is
+CI runs `bun run build` and then `git diff --exit-code main.js`. Because the committed bundle is
 what ships, any change to `src/` or to a dependency that is not followed by a rebuild fails the
-PR. Bun is deliberately unpinned, so a bundler-output shift trips the same check; the fix is the
-same either way.
+PR. Bun is deliberately unpinned, so a bundler release that shifts output — different minified
+identifier names are enough — trips the same check, and the fix is the same: rebuild and commit.
 
-Releases go through the `release-gate` skill and then `release-ship`, which is user-invoked. Tags
-are bare `X.Y.Z` and point at the merged commit of a `release/<version>` prep PR;
-`release.yml` triggers on that tag and creates the GitHub release. Nobody pushes a tag by hand.
+`version-bump.ts` — `version-bump`
+
+<!-- prettier-ignore -->
+```ts
+const manifest = await Bun.file("manifest.json").json();
+const { minAppVersion } = manifest;
+manifest.version = targetVersion;
+await Bun.write("manifest.json", `${JSON.stringify(manifest, null, 2)}\n`);
+```
+
+`minAppVersion` is read _before_ the version field is overwritten, which is the subtle part.
+Releases go through the `release-gate` skill and then `release-ship`, which is user-invoked; tags
+are bare `X.Y.Z` and point at the merged commit of a `release/<version>` prep PR, and
+`release.yml` turns that tag into the GitHub release. Nobody pushes a tag by hand.
 
 ## Findings
 
-This walkthrough describes reverted code, so the rough edges above are not new discoveries — they
-are the defects 1.6.0 and 1.7.0 fixed, now present again. They are recorded in the closed issues
-of that milestone rather than re-filed here.
-
-| Finding                                                                                             | Where       | Status                                                                       |
-| --------------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------- |
-| Thirteen defects fixed in 1.6.0/1.7.0 are present again on `main`, while their issues remain closed | `src/`      | see [#247](https://github.com/philoserf/obsidian-vault-changelog/issues/247) |
-| README has no troubleshooting for failed installs and updates on Windows                            | `README.md` | [#244](https://github.com/philoserf/obsidian-vault-changelog/issues/244)     |
+| Finding                                                                                                                                                                                                                                                                     | Where                                                            | Status                                                                   |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| The plugin overwrites the note at `changelogPath` with no check that it wrote it, and the path autocomplete offers existing notes as completions. A guard was attempted and failed in both directions; its failure modes are recorded so it is not reattempted the same way | `src/main.ts` — `writeToFile`, `src/settings.ts` — `PathSuggest` | [#250](https://github.com/philoserf/obsidian-vault-changelog/issues/250) |

@@ -1,6 +1,38 @@
 # Changelog
 
+## 1.8.0
+
+**This release returns the plugin to the code that shipped as 1.5.4.** Versions 1.6.0 and 1.7.0 have been withdrawn — the file protection they introduced did not work — and 1.8.0 exists so that everyone, including anyone already running 1.6.0, ends up back on that known-good code. The version number is higher than 1.7.0 because that is the only way an update reaches you; the plugin's behaviour is 1.5.4's.
+
+### Withdrawn
+
+- **1.6.0 and 1.7.0 are no longer supported.** Both are marked as pre-releases. Their tags and downloaded files remain available for reference, but neither will be offered as an update and neither should be installed.
+
+### Changed
+
+- The plugin's code is identical to 1.5.4. `main.js` is a fresh build of that source and differs from 1.5.4's published file only in the internal names the minifier chose; nothing it does has changed.
+
+### Upgrading
+
+**Coming from 1.5.4 or earlier:** nothing about the plugin changes. Your settings and your changelog note are untouched, and there is nothing to do.
+
+**Coming from 1.6.0 — please read this before updating.** 1.8.0 is a higher version number but it is a step _backwards_ in behaviour. One of those changes is the reason 1.6.0 was withdrawn at all:
+
+- **The file protection added in 1.6.0 is gone, because it did not work.** It was meant to refuse writing to a file that did not look like a changelog this plugin had generated. It was unreliable in both directions: it still accepted ordinary notes whose lines happened to contain a middle dot, and it could refuse to update the very changelog it had written. A safeguard that fails that way is worse than none, because it invites trust it cannot carry.
+
+  So the rule in 1.8.0 is the same as it was in 1.5.4, and it is worth knowing plainly: **the note at "Changelog path" is overwritten in full on every update, with no checks.** Point that setting at a note created for this purpose and nothing else. Path suggestions offer existing notes, so take care when choosing one.
+
+- **Renaming or moving the changelog note no longer updates the setting.** The setting goes stale, the changelog begins listing itself, and a copy reappears under the old name.
+- **Auto-update fires during editing rather than after it stops**, so with autosave on the changelog is rewritten repeatedly while you type.
+- **Disabling the plugin within 200 ms of an edit can still trigger one more write.**
+- **Notes that share a filename produce identical entries again**, with both links resolving to whichever note the vault picks.
+- **Update failures report less detail** — one generic message rather than one naming the file that failed.
+
+Before updating, open Settings → Vault Changelog and confirm "Changelog path" points at a note you are willing to have overwritten — ideally one this plugin created and nothing else writes to.
+
 ## 1.7.0
+
+**Withdrawn — do not install.** Superseded by 1.8.0; see that entry.
 
 Settings are validated at two trust boundaries — `data.json` at load and the settings tab at
 edit time — and for most of this plugin's history each one validated independently. They had
@@ -44,6 +76,8 @@ Most vaults are unaffected. If your `data.json` was hand-edited, or migrated fro
 Settings you change through the settings tab are not affected by any of this.
 
 ## 1.6.0
+
+**Withdrawn — do not install.** Superseded by 1.8.0; see that entry.
 
 ### Changed
 
