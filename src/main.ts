@@ -19,9 +19,7 @@ import { ChangelogSettingsTab } from "./settings";
 export default class ChangelogPlugin extends Plugin {
   settings: ChangelogSettings = DEFAULT_SETTINGS;
   private debouncedVaultChange = debounce(() => {
-    void this.updateChangelog().catch(() => {
-      new Notice("Failed to update changelog");
-    });
+    this.runUpdate();
   }, 200);
 
   async onload(): Promise<void> {
@@ -32,9 +30,7 @@ export default class ChangelogPlugin extends Plugin {
       id: "update-changelog",
       name: "Update Changelog",
       callback: () => {
-        this.updateChangelog().catch(() => {
-          new Notice("Failed to update changelog");
-        });
+        this.runUpdate();
       },
     });
 
@@ -83,15 +79,32 @@ export default class ChangelogPlugin extends Plugin {
     await this.writeToFile(this.settings.changelogPath, changelog);
   }
 
+  /**
+   * The one place an update failure is reported. Both call sites -- the
+   * command and the debounced vault handler -- were discarding the rejection
+   * value, so the message naming the failing path was built and never read.
+   */
+  private runUpdate(): void {
+    this.updateChangelog().catch((err: unknown) => {
+      console.error("Vault Changelog: update failed", err);
+      new Notice(
+        `Failed to update changelog: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+  }
+
   async writeToFile(path: string, content: string): Promise<void> {
     let file = this.app.vault.getAbstractFileByPath(path);
     if (!file) {
       try {
         file = await this.app.vault.create(path, "");
-      } catch {
+      } catch (createErr) {
         // File may have been created by a concurrent event (TOCTOU race)
         file = this.app.vault.getAbstractFileByPath(path);
-        if (!file) throw new Error(`Failed to create changelog at: ${path}`);
+        if (!file)
+          throw new Error(`Failed to create changelog at: ${path}`, {
+            cause: createErr,
+          });
       }
     }
     if (file instanceof TFile) {
