@@ -14,19 +14,12 @@ The current next step for this repo is tracked in the workspace backlog at `../N
 
 ## Development Commands
 
+`package.json` carries the script list; these are the ones whose behaviour is not obvious from it:
+
 ```bash
-bun install              # Install dependencies
-bun run dev              # Watch mode with auto-rebuild
-bun run build            # Production build (runs check first)
-bun run check            # typecheck + biome check
-bun run typecheck        # tsc --noEmit
-bun run lint:fix         # Auto-fix lint and format
-bun run audit            # bun audit --audit-level=critical (also gates CI)
-bun run version          # Sync package.json version → manifest.json + versions.json
-bun test                 # Run all tests
-bun test src/changelog.test.ts         # Run a single test file
-bun test -t "pattern"                  # Run tests matching a name pattern
-bun run deploy           # Copy main.js/manifest.json/styles.css into a local vault
+bun run build            # check (typecheck + biome) THEN bundle — not just the bundle
+bun run audit            # also gates CI, so a failure here blocks the PR
+bun test -t "pattern"    # run tests matching a name pattern
 ```
 
 `bun run deploy` requires `OBSIDIAN_DEPLOY_DEST` (the plugin folder inside the target vault), set in the gitignored `.env.local`.
