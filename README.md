@@ -13,6 +13,32 @@ Originally created by [Badr Bouslikhin](https://github.com/badrbouslikhin).
 3. Search for "Changelog".
 4. Install and enable the plugin.
 
+## Troubleshooting
+
+### The plugin will not install or update
+
+Most often reported on Windows, and usually the plugin files could not be replaced while
+Obsidian had them open. Try these in order — the first two resolve it most of the time:
+
+1. **Restart Obsidian.** The files may have been written correctly despite the error.
+2. **Disable the plugin first.** Settings → Community plugins → toggle Vault Changelog off,
+   update, then toggle it back on.
+3. **Uninstall and reinstall.**
+4. **Install by hand with Obsidian closed.** Download `main.js`, `manifest.json` and
+   `styles.css` from the [latest release](https://github.com/philoserf/obsidian-vault-changelog/releases/latest)
+   into `.obsidian/plugins/obsidian-vault-changelog/` in your vault.
+
+If none of that works, something is likely holding the files open. Real-time antivirus scanning,
+file-sync clients (OneDrive, Dropbox, Syncthing) and backup plugins all do this. Pausing them
+before updating is worth a try.
+
+### Reporting a problem
+
+Please include the output from the developer console — `Ctrl+Shift+I` (`Cmd+Option+I` on macOS),
+then the Console tab — captured while the failure happens, along with your operating system and
+Obsidian version. Installation failures look alike from the outside, and the console is what
+separates a file that could not be written from one that could not be downloaded.
+
 ## Usage
 
 - **Manual**: Command palette > `Vault Changelog: Update Changelog`
