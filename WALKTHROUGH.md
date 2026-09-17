@@ -6,8 +6,13 @@ rather than the directory listing.
 Every snippet is labelled with its **file and symbol** rather than a line range, so a quote still
 points at the right thing after an unrelated edit above it. Snippets are sliced directly out of
 the source and carry a `<!-- prettier-ignore -->` marker, because prettier reformats code inside
-fenced blocks — it dedents and rejoins wrapped lines — and that is what let the previous edition
-of this document drift out of agreement with the source while looking fine.
+fenced blocks — it dedents them and rejoins wrapped lines — and that silently rots quotes while
+leaving them looking correct.
+
+**This document describes 1.5.4.** The 1.6.0 and 1.7.0 releases were withdrawn and their code
+reverted off `main`, so anything you may have read about an ownership guard, per-field settings
+rules, or a single settings commit path describes code that is no longer here. Several rough
+edges below were fixed in those releases and are, as of this document, unfixed again.
 
 ## Overview
 
@@ -17,41 +22,29 @@ yourself from the palette.
 
 The single most important thing to know before reading the code: **the changelog file is
 overwritten in full on every update.** Nothing accumulates, nothing is merged, no history is
-kept. `renderChangelog` is a pure function of the vault's current state — run it twice against
-an unchanged vault and you get the same string both times. Everything else in the design follows
-from that, including the parts that look defensive.
+kept. Run it twice against an unchanged vault and you get the same string both times.
 
 TypeScript, built with Bun's native bundler into a single CommonJS `main.js` that Obsidian loads.
-`main.js` is committed to the repository, because that committed file is what ships.
+`main.js` is committed, because that committed file is what ships.
 
 ## Architecture
 
 Three source files, and the split between the first and the other two is the one that matters.
 
-| File               | Role                                                                                   | Tested       |
-| ------------------ | -------------------------------------------------------------------------------------- | ------------ |
-| `src/changelog.ts` | Every decision: filtering, sorting, rendering, the settings rules, the ownership guard | Exhaustively |
-| `src/main.ts`      | The Obsidian plugin: lifecycle, events, file I/O, the settings commit path             | Not at all   |
-| `src/settings.ts`  | The settings tab and its path autocomplete                                             | Not at all   |
+| File               | Role                                                               | Tested                  |
+| ------------------ | ------------------------------------------------------------------ | ----------------------- |
+| `src/changelog.ts` | Filtering, sorting, formatting, settings normalization, validation | Exhaustively — 30 tests |
+| `src/main.ts`      | The Obsidian plugin: lifecycle, events, file I/O                   | Not at all              |
+| `src/settings.ts`  | The settings tab and its path autocomplete                         | Not at all              |
 
-`changelog.ts` imports nothing — not Obsidian, not `moment`. That is what makes it testable
-without a running Obsidian, and the rule is held by injecting anything it would otherwise need.
-`main.ts` and `settings.ts` are untested **by construction**, which is the deal: keep the
+`src/changelog.ts` imports nothing — not Obsidian, not `moment`. That is what makes it testable
+without a running Obsidian, and the rule is held by injecting anything it would otherwise need:
+a `TimeFormatter` callback for time formatting, and a `normalize` function for path handling.
+
+`main.ts` and `settings.ts` are untested **by construction**. That is the deal: keep the
 decisions on the pure side and the untested side stays thin enough to read.
 
-Data flows in one direction on each pass:
-
-```
-data.json ──> normalizeLoadedSettings ──> plugin.settings
-                                              │
-vault files ──────────────────────────────────┴──> renderChangelog ──> vault.modify
-```
-
-and settings changes flow back the other way through a single method, `updateSettings`.
-
 ## Loading
-
-`onload` wires everything and is the only place event handlers are registered.
 
 `src/main.ts` — `ChangelogPlugin.onload`
 
@@ -65,7 +58,9 @@ and settings changes flow back the other way through a single method, `updateSet
       id: "update-changelog",
       name: "Update Changelog",
       callback: () => {
-        this.runUpdate();
+        this.updateChangelog().catch(() => {
+          new Notice("Failed to update changelog");
+        });
       },
     });
 
@@ -80,42 +75,22 @@ and settings changes flow back the other way through a single method, `updateSet
     };
     this.registerEvent(this.app.vault.on("modify", handler));
     this.registerEvent(this.app.vault.on("delete", handler));
-    // `rename` is the one event whose identity check `handler` cannot make:
-    // it alone carries `oldPath`, and that is the only value that can say the
-    // renamed file *was* the changelog. Without it the guard compares against
-    // a stale path, the changelog lists itself, and the next write recreates
-    // a ghost at the old name.
-    this.registerEvent(
-      this.app.vault.on("rename", (file, oldPath) => {
-        if (oldPath === this.settings.changelogPath && file instanceof TFile) {
-          this.updateSettings({ changelogPath: file.path });
-          return; // the changelog moved; nothing to regenerate
-        }
-        handler(file);
-      }),
-    );
+    this.registerEvent(this.app.vault.on("rename", handler));
   }
 ```
 
-Three things are happening here, and the third is the subtle one.
+Settings load first, because the settings tab and every handler read them. Then the command, then
+three vault listeners.
 
-Settings load first, because the settings tab and every handler read them. The command is
-registered next — note the callback wraps `runUpdate()` rather than being `runUpdate` itself,
-which keeps `this` bound and keeps the return value discarded deliberately rather than by
-accident.
+`handler` guards on three things: auto-update is on, the changed thing is a file rather than a
+folder, and it is not the changelog itself. That last check is what stops the plugin triggering
+itself in a loop — writing the changelog is a `modify` event.
 
-Then the vault listeners. `handler` guards on three things: auto-update is on, the changed thing
-is a file rather than a folder, and **it is not the changelog itself**. That last check is what
-stops the plugin triggering itself in a loop — writing the changelog is a `modify` event.
-
-`rename` cannot use that handler, and the comment explains why: it is the only event that carries
-`oldPath`, and `oldPath` is the only value that can tell you the renamed file _was_ the changelog.
-Without the special case, the setting goes stale, the changelog starts listing itself, and the
-next write recreates a ghost file at the old name. When the changelog is what moved, the plugin
-follows it and returns without regenerating — there is nothing to regenerate, the content is
-unchanged.
-
-Settings come off disk through one call:
+**Note that all three events share one handler, `rename` included.** `rename` is the only event
+that also carries an `oldPath` argument, and this code does not take it. The consequence is worth
+understanding: if you move or rename the changelog note itself, `settings.changelogPath` still
+points at the old location. The guard then compares the renamed file against a stale path, the
+changelog begins listing itself, and the next write recreates a file at the old name.
 
 `src/main.ts` — `ChangelogPlugin.loadSettings`
 
@@ -129,165 +104,111 @@ Settings come off disk through one call:
   }
 ```
 
-`normalizePath` is passed in rather than imported by `changelog.ts`, which is the first of three
-injection points that keep the pure module Obsidian-free.
+`normalizePath` is passed in rather than imported by `changelog.ts`, which is one of the two
+injection points keeping the pure module Obsidian-free.
 
-## The debounce, and why its third argument is spelled out
+## The debounce
 
 `src/main.ts` — `ChangelogPlugin.debouncedVaultChange`
 
 <!-- prettier-ignore -->
 ```ts
-  // Third argument is resetTimer, and it defaults to false -- which makes
-  // `debounce` fire 200ms after the *first* event of a burst, i.e. a throttle.
-  // Sustained editing with Obsidian autosaving would then regenerate the whole
-  // changelog several times a second. `true` is the trailing edge the name
-  // implies: wait until editing goes quiet, then write once.
-  private debouncedVaultChange = debounce(
-    () => {
-      this.runUpdate();
-    },
-    200,
-    true,
-  );
+export default class ChangelogPlugin extends Plugin {
+  settings: ChangelogSettings = DEFAULT_SETTINGS;
+  private debouncedVaultChange = debounce(() => {
+    void this.updateChangelog().catch(() => {
+      new Notice("Failed to update changelog");
+    });
+  }, 200);
 ```
 
-This is a five-line field with a five-line comment, and the comment is doing real work.
-Obsidian's `debounce` takes `resetTimer` as its third parameter and **defaults it to `false`**,
-which makes the function a throttle rather than a debounce: it fires 200 ms after the _first_
-event of a burst and then again for the next burst. With Obsidian autosaving during sustained
-typing, that regenerated the whole changelog several times a second. Passing `true` gives the
-trailing edge the name implies — wait until editing goes quiet, then write once.
-
-The timer is also the one thing Obsidian will not clean up for you:
+Obsidian's `debounce` takes a third `resetTimer` parameter which **defaults to `false`**, and it
+is not passed here. With that default the function is a _throttle_ rather than a debounce: it
+fires 200 ms after the **first** event of a burst, then again for the next burst. During
+sustained typing with Obsidian autosaving, that regenerates the whole changelog repeatedly rather
+than once when editing stops.
 
 `src/main.ts` — `ChangelogPlugin.onunload`
 
 <!-- prettier-ignore -->
 ```ts
-  onunload(): void {
-    // Event listeners registered via registerEvent are cleaned up
-    // automatically; the debounce timer is not. Without this, disabling the
-    // plugin within 200ms of an edit still fires an update against a
-    // torn-down instance -- and on a plugin *update* the new instance has
-    // already loaded, so two of them write the same file.
-    this.debouncedVaultChange.cancel();
-  }
+  onunload(): void {}
 ```
 
-`registerEvent` unsubscribes the listeners, but it does not touch a timer a listener already
-started. Without the `cancel()`, disabling the plugin inside the 200 ms window still fires an
-update against an instance Obsidian considers gone — and during a plugin _update_ the
-replacement instance has already loaded, so two of them write the same file.
+`onunload` is empty. `registerEvent` releases the listeners automatically, but the debounce timer
+is not something it knows about — so a pending timer can still fire after the plugin has been
+disabled, against a torn-down instance.
 
 ## One update, end to end
-
-Both triggers go through one reporter, so a failure is reported in exactly one place:
-
-`src/main.ts` — `ChangelogPlugin.runUpdate`
-
-<!-- prettier-ignore -->
-```ts
-  /**
-   * The one place an update failure is reported. Both call sites -- the
-   * command and the debounced vault handler -- were discarding the rejection
-   * value, so the message naming the failing path was built and never read.
-   */
-  private runUpdate(): void {
-    this.updateChangelog().catch((err: unknown) => {
-      console.error("Vault Changelog: update failed", err);
-      new Notice(
-        `Failed to update changelog: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
-  }
-```
-
-Both call sites used to discard the rejection, which meant the carefully-built message naming the
-failing path was constructed and never read.
-
-`updateChangelog` does the whole write. First, render:
 
 `src/main.ts` — `ChangelogPlugin.updateChangelog`
 
 <!-- prettier-ignore -->
 ```ts
   async updateChangelog(): Promise<void> {
-    const { changelogPath } = this.settings;
-    const content = renderChangelog(
+    const recentFiles = filterAndSort(
       this.app.vault.getMarkdownFiles(),
-      this.settings,
-      (mtime, fmt) => window.moment(mtime).format(fmt),
-      (file) =>
-        this.app.metadataCache.fileToLinktext(file as TFile, changelogPath),
+      this.settings.changelogPath,
+      this.settings.excludedFolders,
+      this.settings.maxRecentFiles,
     );
+    const changelog = generateChangelog(
+      recentFiles,
+      this.settings.datetimeFormat,
+      this.settings.useWikiLinks,
+      this.settings.changelogHeading,
+      (mtime, fmt) => window.moment(mtime).format(fmt),
+    );
+    await this.writeToFile(this.settings.changelogPath, changelog);
+  }
 ```
 
-Those last two arguments are the other two injection points. The formatter wraps Obsidian's
+Two calls, nine arguments between them, and the ordering is a contract the caller has to keep:
+`filterAndSort` must run first, because `generateChangelog` formats whatever list it is handed
+without filtering anything itself. Adding a setting that affects output means widening a
+signature and this call site.
+
+The last argument is the second injection point. The formatter wraps Obsidian's
 globally-installed moment, so nothing is bundled; tests pass the npm `moment` package instead,
-which is why `moment` is a devDependency and never ships. The link resolver wraps
-`metadataCache.fileToLinktext`, which uses the bare filename when it is unique in the vault and
-the full path when it is not — a rule that needs the whole vault's link graph, which is exactly
-the knowledge the pure core must not have.
+which is why `moment` is a devDependency and never ships.
 
-Second, find or create the file:
-
-`src/main.ts` — `ChangelogPlugin.updateChangelog`
+`src/main.ts` — `ChangelogPlugin.writeToFile`
 
 <!-- prettier-ignore -->
 ```ts
-    let file = this.app.vault.getAbstractFileByPath(changelogPath);
+  async writeToFile(path: string, content: string): Promise<void> {
+    let file = this.app.vault.getAbstractFileByPath(path);
     if (!file) {
       try {
-        file = await this.app.vault.create(changelogPath, "");
-      } catch (createErr) {
+        file = await this.app.vault.create(path, "");
+      } catch {
         // File may have been created by a concurrent event (TOCTOU race)
-        file = this.app.vault.getAbstractFileByPath(changelogPath);
-        if (!file)
-          throw new Error(`Failed to create changelog at: ${changelogPath}`, {
-            cause: createErr,
-          });
+        file = this.app.vault.getAbstractFileByPath(path);
+        if (!file) throw new Error(`Failed to create changelog at: ${path}`);
       }
     }
+    if (file instanceof TFile) {
+      await this.app.vault.modify(file, content);
+    } else {
+      new Notice(`Could not update changelog at path: ${path}`);
+    }
+  }
 ```
 
 The `catch` is a TOCTOU race, not defensive padding. Between `getAbstractFileByPath` returning
 nothing and `create` running, a concurrent vault event can create the file; `create` then throws
-on a file that now exists. Looking it up again is the recovery, and the original error rides
-along as `cause` for the case where the file genuinely could not be created.
+on a file that now exists, and looking it up again is the recovery.
 
-Third — and this is the part that stops the plugin destroying your notes:
+**What this method does not do is check what it is about to destroy.** `changelogPath` is free
+text and can name any note in the vault; the only validation anywhere is that it ends in `.md`,
+which every note satisfies. `vault.modify` then replaces that note's entire contents. Pointing
+the setting at an existing note — which the path autocomplete below makes easy — loses it.
 
-`src/main.ts` — `ChangelogPlugin.updateChangelog`
-
-<!-- prettier-ignore -->
-```ts
-    if (file instanceof TFile) {
-      // The plugin owns the file at changelogPath and replaces it wholesale,
-      // so confirm this is a file the plugin wrote before destroying it. The
-      // path can be typed to any note in the vault.
-      const existing = await this.app.vault.read(file);
-      if (
-        !isPluginGeneratedChangelog(existing, this.settings.changelogHeading)
-      ) {
-        throw new Error(
-          `Refusing to overwrite ${changelogPath}: it does not look like a changelog this plugin generated. Point "Changelog path" at a new or empty note, or clear that file first.`,
-        );
-      }
-      await this.app.vault.modify(file, content);
-    } else {
-      new Notice(`Could not update changelog at path: ${changelogPath}`);
-    }
-```
-
-`changelogPath` is free text. It can name any note in the vault, and this function replaces that
-note's contents wholesale. Checking the extension is useless, because every note is `.md`. So the
-plugin asks whether the file _looks like one it wrote_, and refuses otherwise. The error names
-the path and says what to do about it.
+Note also that both failure paths report the same four words. `updateChangelog`'s two callers
+each `.catch()` with `new Notice("Failed to update changelog")`, discarding the error, so the
+message here naming the failing path is built and never read.
 
 ## The pure core
-
-### Choosing and ordering
 
 `src/changelog.ts` — `filterAndSort`
 
@@ -314,216 +235,41 @@ export function filterAndSort(
 ```
 
 Three filters in one pass: the changelog never lists itself, excluded folders are prefix matches,
-and the rest sort newest-first and truncate. The `folder.endsWith("/") ? folder : folder + "/"`
-is not cosmetic — without the appended separator, excluding `Arch` would also exclude `Archive/`,
-because `"Archive/x.md".startsWith("Arch")` is true.
+and the rest sort newest-first and truncate. The `folder.endsWith("/")` ternary is not cosmetic —
+without the appended separator, excluding `Arch` would also exclude `Archive/`, because
+`"Archive/x.md".startsWith("Arch")` is true.
 
-### Rendering
+Matching is exact and case-sensitive. On a case-insensitive filesystem a user who types
+`archive` for a folder named `Archive` gets a row that looks like a working rule and excludes
+nothing.
 
-`src/changelog.ts` — `renderChangelog`
+`src/changelog.ts` — `generateChangelog`
 
 <!-- prettier-ignore -->
 ```ts
-export function renderChangelog(
+export function generateChangelog(
   files: ChangelogFile[],
-  settings: ChangelogSettings,
+  datetimeFormat: string,
+  useWikiLinks: boolean,
+  changelogHeading: string,
   formatTime: TimeFormatter,
-  resolveLinkText: LinkTextResolver,
 ): string {
-  const recent = filterAndSort(
-    files,
-    settings.changelogPath,
-    settings.excludedFolders,
-    settings.maxRecentFiles,
-  );
-  let content = settings.changelogHeading
-    ? `${settings.changelogHeading}\n\n`
-    : "";
-  for (const file of recent) {
-    const time = formatTime(file.stat.mtime, settings.datetimeFormat);
-    // Resolved for both modes: a bare basename is ambiguous in plain text for
-    // exactly the same reason it is ambiguous as a wiki-link.
-    const name = resolveLinkText(file);
-    content += `- ${time} · ${settings.useWikiLinks ? `[[${name}]]` : name}\n`;
+  let content = changelogHeading ? `${changelogHeading}\n\n` : "";
+  for (const file of files) {
+    const time = formatTime(file.stat.mtime, datetimeFormat);
+    const name = useWikiLinks ? `[[${file.basename}]]` : file.basename;
+    content += `- ${time} · ${name}\n`;
   }
   return content;
-```
-
-One render entry point, taking the whole settings object rather than six of its fields spelled
-out positionally — so adding a setting that affects output does not mean widening a signature and
-a call site that carry no information of their own. It calls `filterAndSort` itself, so there is
-no way to render unfiltered files by forgetting a step.
-
-Note the link text is resolved in **both** modes. A bare basename is ambiguous in plain text for
-exactly the same reason it is ambiguous as a wiki-link, and two notes sharing a filename used to
-produce two identical rows.
-
-### The ownership guard
-
-`src/changelog.ts` — `isPluginGeneratedChangelog`
-
-<!-- prettier-ignore -->
-```ts
-/**
- * Does this file look like one this plugin wrote? The plugin replaces the
- * file at changelogPath wholesale, and every note in the vault satisfies the
- * only other check there is (`.md`), so the shell asks this before
- * overwriting and refuses a file that is someone else's note.
- *
- * Deliberately tolerant of a heading it does not recognise: the heading slot
- * accepts whatever is currently there, so changing the changelogHeading
- * setting cannot make the user's own changelog foreign to the plugin that
- * wrote it. What it will not tolerate is prose where entries should be.
- */
-export function isPluginGeneratedChangelog(
-  content: string,
-  changelogHeading: string,
-): boolean {
-  const lines = content
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "");
-
-  // Empty: updateChangelog's create path lays down "" before the first modify.
-  if (lines.length === 0) return true;
-
-  // A heading and nothing else -- a configured heading over an empty vault.
-  const heading = changelogHeading.trim();
-  if (lines.length === 1 && heading !== "" && lines[0] === heading) return true;
-
-  // Otherwise: entries, optionally under one leading heading line.
-  const body = ENTRY_LINE.test(lines[0]) ? lines : lines.slice(1);
-  return body.length > 0 && body.every((line) => ENTRY_LINE.test(line));
 }
 ```
 
-This is the predicate that makes the free-text path setting safe. It works by grammar: after an
-optional leading heading, every non-empty line must look like an entry. Prose fails. A checklist
-fails. Your actual notes fail — which is the point.
+It takes an already-filtered list — see the ordering contract above — and five positional
+parameters.
 
-Both tolerances encode a specific failure that was hit before:
-
-- **Empty passes**, because `updateChangelog`'s create path lays down `""` and the very next step
-  is this check. The guard must not reject the file the plugin just created.
-- **The heading slot accepts whatever heading is there**, not the configured one. Otherwise
-  changing the `changelogHeading` setting would make your own changelog foreign to the plugin
-  that wrote it, and lock the plugin out of its own file.
-
-Worth noticing what is _not_ tolerated in the same way: the entry pattern itself. It has to keep
-matching output written by earlier versions, and nothing says so — filed as a finding below.
-
-## Settings: two boundaries, one rule each
-
-This is the part of the codebase most likely to be misunderstood, so it is worth stating the
-organizing idea before any code.
-
-Settings arrive from two places that cannot be trusted: `data.json` at load (hand-editable,
-sync-corruptible, written by older versions) and the settings tab at edit time (a human typing).
-For most of the plugin's life each boundary validated independently, and they drifted — the tab
-refused a `changelogPath` without `.md` while the loader accepted one, so a vault could be
-actively writing to a file its own settings tab would not display.
-
-**Now every rule with a choice in it is one exported function, and both boundaries call it.**
-
-`src/changelog.ts` — `coerceChangelogPath`
-
-<!-- prettier-ignore -->
-```ts
-/**
- * Authoritative rule for changelogPath: the changelog must be a markdown
- * file. Both boundaries call this, which is the whole point -- the settings
- * tab has refused a non-`.md` path since #142, and the loader never has, so
- * a persisted `"Notes"` was a value the plugin ran on and the settings tab
- * would not display.
- *
- * `fallback` is the settings tab's current value and the loader's default,
- * so a typo in the field reverts to what the user had rather than resetting
- * the setting to `Changelog.md`.
- */
-export function coerceChangelogPath(
-  value: unknown,
-  normalize: (path: string) => string,
-  fallback: string = DEFAULT_SETTINGS.changelogPath,
-): string {
-  if (typeof value !== "string") return fallback;
-  const normalized = normalize(value);
-  return normalized.endsWith(".md") ? normalized : fallback;
-}
-```
-
-The `fallback` parameter is what lets one function serve two boundaries that genuinely want
-different behaviour on bad input. The loader omits it and gets the default, because at load there
-is no prior value. The settings tab passes the value the plugin is currently running on, so a
-typo reverts to what the user had rather than resetting the setting.
-
-`src/changelog.ts` — `coerceDatetimeFormat`
-
-<!-- prettier-ignore -->
-```ts
-/**
- * Authoritative rule for datetimeFormat: an empty format is not a format.
- * The failure it prevents is silent rather than loud -- moment's `format("")`
- * falls through to ISO-8601, so an empty persisted format turns every row
- * into a full timestamp instead of raising anything.
- *
- * This is the one rule the settings tab calls *without* passing its current
- * value. Clearing the field and blurring is the only reset-to-default the
- * field offers, and it has always landed on the default; handing it the
- * current value would quietly take that away.
- */
-export function coerceDatetimeFormat(
-  value: unknown,
-  fallback: string = DEFAULT_SETTINGS.datetimeFormat,
-): string {
-  return typeof value === "string" && value.trim() !== "" ? value : fallback;
-}
-```
-
-This one has the exception you need to know about: **the settings tab calls it without a
-fallback.** Clearing that field is the only reset-to-default gesture it offers, and it has always
-landed on the default. Passing the current value would have removed a feature while looking like
-consistency.
-
-`src/changelog.ts` — `coerceExcludedFolders`
-
-<!-- prettier-ignore -->
-```ts
-/**
- * Authoritative rule for excludedFolders: normalize each entry, then put it
- * through the same verdict the Add button uses. Root markers and duplicates
- * both fall out of that one pass, because the verdict is taken against the
- * accumulating result rather than against the input -- which is what makes
- * `["Archive/", "Archive"]` collapse to one row instead of two identical
- * ones whose remove buttons both delete the first.
- *
- * An array carrying a non-string is corrupt rather than partly usable, so
- * the whole field falls back. That is the all-or-nothing rule the scalar
- * guards apply, and the suite pins it.
- */
-export function coerceExcludedFolders(
-  value: unknown,
-  normalize: (path: string) => string,
-  fallback: string[] = DEFAULT_SETTINGS.excludedFolders,
-): string[] {
-  if (
-    !Array.isArray(value) ||
-    !value.every((folder) => typeof folder === "string")
-  ) {
-    return [...fallback];
-  }
-  const folders: string[] = [];
-  for (const entry of value as string[]) {
-    const folder = normalize(entry);
-    if (validateExcludedFolder(folder, folders) === "ok") folders.push(folder);
-  }
-  return folders;
-}
-```
-
-The accumulator is the trick here. Each entry's verdict is taken against the _result so far_
-rather than against the input, so a duplicate that normalization creates —
-`["Archive/", "Archive"]` both becoming `"Archive"` — is dropped by the same pass that drops
-root markers. There is no separate de-duplication step.
+`file.basename` is used directly, which is where two notes sharing a filename become
+indistinguishable: `Projects/Meeting Notes.md` and `Archive/Meeting Notes.md` both render as
+`[[Meeting Notes]]`, and both links resolve to whichever note the vault picks.
 
 `src/changelog.ts` — `clampMaxRecentFiles`
 
@@ -531,203 +277,108 @@ root markers. There is no separate de-duplication step.
 ```ts
 /**
  * The one authoritative clamping rule for maxRecentFiles: floor to an
- * integer and clamp to [1, MAX_RECENT_FILES]; anything that is not a number
- * falls back. Load-time and the settings UI both call this.
- *
- * `fallback` is what a value that is not a number at all becomes. The loader
- * omits it and gets the default, because at load there is no prior value; the
- * settings tab passes the value the plugin is currently running on, so a typo
- * reverts rather than resetting the setting. Note this is the *non-numeric*
- * path only -- an out-of-range number still clamps, which is why 0 becomes 1
- * and 1000 becomes 500 at both boundaries.
- *
- * Non-numbers are rejected *before* coercion rather than after. `Number()`
- * maps null, "", "   ", [] and false to a perfectly finite 0, which the clamp
- * below would then raise to 1 -- turning a corrupt data.json into a changelog
- * one entry long, which reads as "the plugin broke" rather than as a settings
- * problem. Numeric strings stay accepted because the settings tab hands this
- * function the raw contents of a text field.
+ * integer and clamp to [1, MAX_RECENT_FILES]; non-finite input falls back
+ * to the default. Load-time and the settings UI both call this.
  */
-export function clampMaxRecentFiles(
-  value: unknown,
-  fallback: number = DEFAULT_SETTINGS.maxRecentFiles,
-): number {
-  const raw =
-    typeof value === "number"
-      ? value
-      : typeof value === "string" && value.trim() !== ""
-        ? Number(value)
-        : Number.NaN;
-  if (!Number.isFinite(raw)) return fallback;
+export function clampMaxRecentFiles(value: unknown): number {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return DEFAULT_SETTINGS.maxRecentFiles;
   return Math.max(1, Math.min(Math.floor(raw), MAX_RECENT_FILES));
 }
 ```
 
-Two details that look like over-thinking and are not. `Number()` maps `null`, `""`, `"   "`, `[]`
-and `false` to a perfectly finite `0`, which the clamp would then raise to `1` — turning a corrupt
-`data.json` into a changelog exactly one entry long, which reads as "the plugin broke" rather
-than as a settings problem. Hence the type test _before_ coercion. And numeric strings stay
-accepted because the settings tab hands this function the raw contents of a text field.
-
-Note the `fallback` covers the non-numeric path only. An out-of-range _number_ still clamps, at
-both boundaries — `0` becomes `1` and `1000` becomes `500`.
-
-Then the loader is just those rules, called once each:
+Documented as the one authoritative clamping rule, called from both load-time and the settings
+UI. Worth reading carefully: `Number()` runs **before** the finiteness test, and `Number()` maps
+`null`, `""`, `[]` and `false` to a perfectly finite `0` — which the clamp then raises to `1`. A
+`data.json` carrying any of those shapes yields a changelog exactly one entry long, rather than
+the documented fallback to the default.
 
 `src/changelog.ts` — `normalizeLoadedSettings`
 
 <!-- prettier-ignore -->
 ```ts
-/**
- * Turn persisted data into valid settings: one rule call per field. Disk is
- * one of the two trust boundaries and the settings tab is the other, and
- * every rule above is called by both -- which is the property this function
- * exists to hold up. It passes no `fallback` anywhere, because at load there
- * is no prior value to revert to; the settings tab passes one.
- *
- * The two fields with no rule to share are the booleans, which a typed toggle
- * cannot get wrong, and the heading, whose whole rule is `.trim()`.
- * `normalize` is injected (Obsidian's normalizePath in production) to keep
- * this module Obsidian-free.
- *
- * Unknown keys cannot survive, and no filter is needed to stop them: the
- * result is *built* rather than patched, so nothing from `loaded` is spread
- * into it and every field arrives by name. That also makes the object immune
- * to a `__proto__` key in the persisted JSON, which is a property of the
- * construction rather than of a guard someone could delete.
- */
 export function normalizeLoadedSettings(
   raw: unknown,
   normalize: (path: string) => string,
 ): ChangelogSettings {
-  const loaded = (raw ?? {}) as Partial<
-    Record<keyof ChangelogSettings, unknown>
-  >;
-
-  const str = (value: unknown, fallback: string): string =>
-    typeof value === "string" ? value : fallback;
-  const bool = (value: unknown, fallback: boolean): boolean =>
-    typeof value === "boolean" ? value : fallback;
-
-  return {
-    autoUpdate: bool(loaded.autoUpdate, DEFAULT_SETTINGS.autoUpdate),
-    changelogPath: coerceChangelogPath(loaded.changelogPath, normalize),
-    datetimeFormat: coerceDatetimeFormat(loaded.datetimeFormat),
-    maxRecentFiles: clampMaxRecentFiles(loaded.maxRecentFiles),
-    excludedFolders: coerceExcludedFolders(loaded.excludedFolders, normalize),
-    useWikiLinks: bool(loaded.useWikiLinks, DEFAULT_SETTINGS.useWikiLinks),
-    changelogHeading: str(
-      loaded.changelogHeading,
-      DEFAULT_SETTINGS.changelogHeading,
-    ).trim(),
+  const loaded = (raw ?? {}) as Record<string, unknown>;
+  const knownKeys = new Set(Object.keys(DEFAULT_SETTINGS));
+  const filtered: Record<string, unknown> = {};
+  for (const key of Object.keys(loaded)) {
+    if (knownKeys.has(key)) {
+      filtered[key] = loaded[key];
+    }
+  }
+  const settings: ChangelogSettings = {
+    ...DEFAULT_SETTINGS,
+    ...(filtered as Partial<ChangelogSettings>),
   };
+  for (const key of [
+    "changelogPath",
+    "changelogHeading",
+    "datetimeFormat",
+  ] as const) {
+    if (typeof settings[key] !== "string")
+      settings[key] = DEFAULT_SETTINGS[key];
+  }
+  for (const key of ["autoUpdate", "useWikiLinks"] as const) {
+    if (typeof settings[key] !== "boolean")
+      settings[key] = DEFAULT_SETTINGS[key];
+  }
+  if (
+    !Array.isArray(settings.excludedFolders) ||
+    !settings.excludedFolders.every((folder) => typeof folder === "string")
+  ) {
+    settings.excludedFolders = DEFAULT_SETTINGS.excludedFolders;
+  }
+  settings.changelogPath = normalize(settings.changelogPath);
+  settings.excludedFolders = settings.excludedFolders.map(normalize);
+  settings.maxRecentFiles = clampMaxRecentFiles(settings.maxRecentFiles);
+  settings.changelogHeading = settings.changelogHeading.trim();
+  return settings;
 }
 ```
 
-Two guarantees here come from the _construction_ rather than from any guard, which is worth
-holding on to if you ever rewrite this function. It is an object literal reading each field by
-name, and nothing from the persisted data is ever spread into it. So unknown keys from removed
-settings cannot survive a load, and a `__proto__` key in the JSON cannot reach
-`Object.prototype`. Both used to be enforced by an explicit known-key filter; that filter was
-deleted precisely because building the result is a stronger way to get the same properties.
+Persisted data is not trusted. The function copies known keys into a fresh object, spreads that
+over the defaults, then walks the result three more times — a string-key tuple, a boolean-key
+tuple, and an array special case — restoring defaults wherever the runtime type is wrong. The
+`knownKeys` filter is what stops a renamed or removed setting lingering in `data.json`, and
+running it before the spread is also what keeps a `__proto__` key out of the result.
 
-### The folder verdict
+The two `as const` key tuples have to be kept in sync with `ChangelogSettings` by hand. Nothing
+fails if you add an eighth setting and forget.
+
+`src/changelog.ts` — `isValidChangelogPath`
+
+<!-- prettier-ignore -->
+```ts
+/** The changelog must be a markdown file; paths are validated post-normalize. */
+export function isValidChangelogPath(normalizedPath: string): boolean {
+  return normalizedPath.endsWith(".md");
+}
+```
+
+The entire path validation. Every note in the vault ends in `.md`, so this accepts every note in
+the vault.
 
 `src/changelog.ts` — `validateExcludedFolder`
 
 <!-- prettier-ignore -->
 ```ts
-export type ExcludedFolderVerdict = "ok" | "invalid" | "duplicate";
-
-/**
- * Every shape a normalizer can hand back for "no folder at all". The guard
- * below is reached only with already-normalized input, and Obsidian's
- * normalizePath maps an empty or separator-only string onto one of these
- * rather than onto "" -- which of them is version-dependent, so the set
- * covers all four instead of betting on one. A root marker that survives
- * into excludedFolders is not corrupting, just permanently inert:
- * filterAndSort would test `path.startsWith("./")`, and no vault path
- * begins that way, so the row excludes nothing and never stops doing so.
- */
-const ROOT_MARKERS = new Set(["", ".", "./", "/"]);
-
-/**
- * Validate a normalized folder path before adding it to excludedFolders:
- * the vault root in any of its spellings is invalid; an already-listed
- * folder is a duplicate.
- */
 export function validateExcludedFolder(
   normalizedFolder: string,
   existing: string[],
 ): ExcludedFolderVerdict {
-  if (ROOT_MARKERS.has(normalizedFolder.trim())) return "invalid";
+  if (!normalizedFolder || normalizedFolder === ".") return "invalid";
   if (existing.includes(normalizedFolder)) return "duplicate";
   return "ok";
 }
 ```
 
-The four-element `ROOT_MARKERS` set is a hedge, and deliberately so. `obsidian` ships **type
-declarations only** — there is no JavaScript in the package — so `normalizePath` cannot be
-executed from this repository and which marker it returns for empty input could not be
-determined. Covering all four spellings is correct under every reading.
-
-## The commit path
-
-Every settings change in the plugin goes through one method.
-
-`src/main.ts` — `ChangelogPlugin.updateSettings`
-
-<!-- prettier-ignore -->
-```ts
-  /**
-   * The one place a setting changes. Callers hand over a patch instead of
-   * mutating `this.settings`, and that is what makes the rollback possible:
-   * the previous object is still intact when the write fails, so memory can
-   * be put back into agreement with disk. Assigning first and persisting
-   * afterwards -- the shape this replaces -- left nowhere to keep the old
-   * value, so a failed write showed a notice and then went on running on a
-   * setting that was never saved, until the next restart silently reverted
-   * it.
-   *
-   * It trusts the values it is given. Coercion belongs at the two boundaries
-   * that have a fallback to offer -- `normalizeLoadedSettings` for disk, the
-   * settings handlers for the user -- and re-validating here would run every
-   * rule twice per edit with no way to say which result was stored. Do not
-   * add a defensive re-validation.
-   *
-   * Deliberately free of side effects. Re-registering vault listeners when
-   * `autoUpdate` flips is exactly the leak behind #97 and #124; the handlers
-   * are registered once in `onload` and read `this.settings.autoUpdate`
-   * inside the guard, and a commit path is an inviting place to break that.
-   */
-  updateSettings(patch: Partial<ChangelogSettings>): void {
-    const previous = this.settings;
-    this.settings = { ...previous, ...patch };
-    this.saveData(this.settings).catch((err: unknown) => {
-      this.settings = previous;
-      console.error("Vault Changelog: failed to save settings", err);
-      new Notice(
-        `Failed to save changelog settings: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
-  }
-```
-
-Three things about this are load-bearing:
-
-**The rollback.** The previous object is kept, so a failed write can restore it. The shape this
-replaced — assign, then persist — had nowhere to keep the old value, so a failed save showed a
-notice and then left the plugin running on a setting that was never written, until a restart
-silently reverted it.
-
-**No re-validation.** The handler coerces, compares, notices, and hands over the coerced value;
-this method stores it. Adding a defensive re-validation here would run every rule twice per edit
-with two call sites that can disagree about which result was stored. The comment says so because
-the next reader's instinct is to add one.
-
-**No side effects.** Re-registering vault listeners when `autoUpdate` flips is the bug behind two
-closed issues. The handlers are registered once in `onload` and read `this.settings.autoUpdate`
-inside the guard, and a commit path is an inviting place to break that.
+Three-valued, so the caller can tell the two failure modes apart. Note the guards are written
+against raw input — empty string, `"."` — while the parameter is named `normalizedFolder` and the
+only caller normalizes first. Whichever marker `normalizePath` returns for empty input, if it is
+not exactly `"."` it passes as valid.
 
 ## The settings tab
 
@@ -738,49 +389,24 @@ inside the guard, and a commit path is an inviting place to break that.
   private getPaths(): string[] {
     if (this.cachedPaths) return this.cachedPaths;
 
-    // Folders only. This suggester serves both the changelog-path field and
-    // the excluded-folder field, and neither wants an existing note: the
-    // changelog path is overwritten wholesale, so completing to a note is
-    // the fast way to lose it, and an excluded *folder* is never a file.
     const paths: string[] = [];
     for (const folder of this.app.vault.getAllFolders()) {
       paths.push(`${folder.path}/`);
+    }
+    for (const file of this.app.vault.getFiles()) {
+      if (file.extension === "md") {
+        paths.push(file.path);
+      }
     }
     this.cachedPaths = paths;
     return paths;
   }
 ```
 
-Folders only, for both fields that use this suggester, and the reason is asymmetric. For the
-excluded-folder field a file is simply never a valid answer. For the changelog path it is worse
-than invalid: completing to an existing note is one click away from overwriting it, which was the
-fastest known route to losing a note before the ownership guard existed.
-
-`display()` builds every control. Its opening is the one piece of this file that needs explaining
-before the controls make sense:
-
-`src/settings.ts` — `ChangelogSettingsTab.display`
-
-<!-- prettier-ignore -->
-```ts
-  display(): void {
-    const { containerEl } = this;
-
-    // No `const { settings } = this.plugin` here. updateSettings replaces the
-    // settings object rather than mutating it, so a binding captured once at
-    // display time would be a snapshot that goes stale on the first edit and
-    // feeds pre-change values back into the next one. Handlers read
-    // `this.plugin.settings` at event time instead.
-    containerEl.empty();
-    const { settings } = this.plugin; // initial values for the controls only
-```
-
-`updateSettings` _replaces_ the settings object rather than mutating it, so a binding captured
-once at display time is a snapshot that goes stale on the first edit. Handlers read
-`this.plugin.settings` at event time. The surviving destructure is for the controls' initial
-values only, which are read during `display()` and are correct.
-
-The changelog-path field shows the general shape of a handler:
+The suggester offers folders **and every markdown file in the vault**, and it serves both the
+excluded-folder field and the changelog-path field. For the changelog path that means existing
+notes are offered as completions, and selecting one is a single click — combined with
+`writeToFile`'s lack of an ownership check, that is the fastest route to overwriting a note.
 
 `src/settings.ts` — `ChangelogSettingsTab.display`
 
@@ -788,163 +414,129 @@ The changelog-path field shows the general shape of a handler:
 ```ts
         text.inputEl.addEventListener("blur", () => {
           const normalized = normalizePath(text.getValue());
-          // The rule runs once. Comparing its result against the *normalized*
-          // input rather than the raw input matters: a trailing slash or a
-          // backslash normalizes away harmlessly, and comparing against the
-          // raw text would report those as rejected paths.
-          const coerced = coerceChangelogPath(
-            normalized,
-            normalizePath,
-            this.plugin.settings.changelogPath,
-          );
-          if (coerced !== normalized) {
+          if (!isValidChangelogPath(normalized)) {
+            text.setValue(settings.changelogPath);
             new Notice("Changelog path must end with .md");
+            return;
           }
-          text.setValue(coerced);
-          this.plugin.updateSettings({ changelogPath: coerced });
+          settings.changelogPath = normalized;
+          this.plugin.saveSettingsSafely();
         });
 ```
 
-Rule called once, result compared against the input to decide whether to notice, coerced value
-written back into the field and handed to the commit path. Note it validates on `blur`, not per
-keystroke — a half-typed path is not a wrong path.
-
-The datetime field is the one that needed splitting:
+The changelog-path field validates on `blur` rather than per keystroke, which is right: a
+half-typed path is not a wrong path.
 
 `src/settings.ts` — `ChangelogSettingsTab.display`
 
 <!-- prettier-ignore -->
 ```ts
-    const datetimeSetting = new Setting(containerEl)
-      .setName("Datetime format")
-      .setDesc("Moment.js format string")
-      .addText((text) => {
+      .addText((text) =>
         text
           .setPlaceholder("YYYY-MM-DD[T]HHmm")
           .setValue(settings.datetimeFormat)
-          // Preview only -- no setValue, no save. onChange fires per keystroke,
-          // and an empty field is a transient state on the way to a new format,
-          // since select-all-then-retype is how a value gets replaced. Writing
-          // the default back into the input here moved the caret mid-edit and
-          // persisted that default over the user's format before they had typed
-          // the first character of its replacement. #175 was this same bug in
-          // the field below, fixed the same way.
           .onChange((format) => {
-            setDatetimePreview(coerceDatetimeFormat(format));
-          });
-
-        // Commit on blur, matching both sibling text fields. Blur is the point
-        // the user has finished, so substituting the default for a field left
-        // empty is a decision rather than an interruption.
-        text.inputEl.addEventListener("blur", () => {
-          // No current-value fallback, deliberately, and unlike every other
-          // field here. Clearing this field is the only reset-to-default it
-          // offers, and it has always landed on the default; passing the
-          // current value would quietly take that away.
-          const nextFormat = coerceDatetimeFormat(text.getValue());
-          text.setValue(nextFormat);
-          setDatetimePreview(nextFormat);
-          this.plugin.updateSettings({ datetimeFormat: nextFormat });
-        });
-      });
-```
-
-`onChange` fires per keystroke, and it now does nothing but update the preview. It used to also
-substitute the default for an empty field and save — so selecting all and deleting before
-retyping, the ordinary way to replace a value, stuffed the default back into the input, moved the
-caret, and persisted it over the user's format before they had typed the first character of the
-replacement. The preview is the only reason `onChange` is used at all, so the fix was to split
-the two jobs rather than to move the whole field to `blur`.
-
-`datetimePreview` is declared `| null` and read through a guard because the assignment genuinely
-cannot precede the closure that reads it — `descEl` does not exist until the `Setting` has been
-constructed. This is the one place the narrative has to run backwards, and the `| null` is what
-makes the ordering assumption something the compiler can check.
-
-The max-recent-files field is where one rule replaced two:
-
-`src/settings.ts` — `ChangelogSettingsTab.display`
-
-<!-- prettier-ignore -->
-```ts
-      .addText((text) => {
-        text.setValue(settings.maxRecentFiles.toString());
-
-        text.inputEl.addEventListener("blur", () => {
-          const entered = text.getValue().trim();
-          // One rule, one branch. The hand-rolled `isNaN || < 1` pre-check
-          // that used to sit here enforced only the low end, so 1000 and 25.9
-          // were rewritten silently while 0 and "abc" got a notice naming a
-          // range the handler did not actually apply.
-          const clamped = clampMaxRecentFiles(
-            entered,
-            this.plugin.settings.maxRecentFiles,
-          );
-          // Compare numerically, not by string round-trip: "025", "25.0" and
-          // "1e2" are all valid input that re-serializes differently.
-          if (clamped !== Number(entered)) {
-            new Notice(
-              `Max recent files must be a whole number between 1 and ${MAX_RECENT_FILES}`,
-            );
-          }
-          text.setValue(clamped.toString());
-          this.plugin.updateSettings({ maxRecentFiles: clamped });
-        });
-      });
-```
-
-The comparison is numeric rather than a string round-trip, and that is deliberate:
-`clamped.toString() !== entered` would fire a spurious "must be a whole number" on `025`, `25.0`
-and `1e2`, all of which are valid input that happens to re-serialize differently.
-
-Adding an excluded folder is the one exhaustive switch in the codebase:
-
-`src/settings.ts` — `ChangelogSettingsTab.display`
-
-<!-- prettier-ignore -->
-```ts
-      .addButton((button) => {
-        button.setButtonText("Add").onClick(() => {
-          const existing = this.plugin.settings.excludedFolders;
-          const folder = normalizePath(folderInputEl.value);
-          const verdict = validateExcludedFolder(folder, existing);
-          // Exhaustive, so a fourth verdict cannot be added without the
-          // compiler naming this call site. Falling off the end is exactly how
-          // "duplicate" went unhandled: no notice, input not cleared, list not
-          // re-rendered -- indistinguishable from a dead button.
-          switch (verdict) {
-            case "invalid":
-              new Notice(
-                "Excluded folder path cannot be empty or the vault root",
-              );
-              return;
-            case "duplicate":
-              new Notice(`"${folder}" is already excluded`);
-              folderInputEl.value = "";
-              return;
-            case "ok":
-              // Replaced, not pushed: a push into the shared array would
-              // survive updateSettings restoring the previous object, so the
-              // rollback would leave the folder in memory but not on disk.
-              this.plugin.updateSettings({
-                excludedFolders: [...existing, folder],
-              });
-              folderInputEl.value = "";
-              this.renderExcludedFolders(excludedFoldersList);
-              return;
-            default: {
-              const unhandled: never = verdict;
-              throw new Error(
-                `Unhandled excluded-folder verdict: ${String(unhandled)}`,
-              );
+            const nextFormat = format || DEFAULT_SETTINGS.datetimeFormat;
+            if (!format) {
+              text.setValue(nextFormat);
             }
+            settings.datetimeFormat = nextFormat;
+            datetimePreview.textContent = `Preview: ${window.moment().format(nextFormat)}`;
+            this.plugin.saveSettingsSafely();
+          }),
+      );
+
+    datetimePreview = datetimeSetting.descEl.createDiv({
+      text: `Preview: ${window.moment().format(settings.datetimeFormat)}`,
+    });
+```
+
+The datetime field does not. `onChange` fires per keystroke and does three things — substitutes
+the default for an empty field, writes it back into the input with `setValue`, and saves. Select
+all and delete before retyping, which is the ordinary way to replace a value, and the default is
+stuffed into the field and persisted over the user's format before the first character of the
+replacement is typed.
+
+`datetimePreview` is also declared here without an initializer and read inside that closure
+twenty lines before it is assigned. The ordering is forced — `descEl` does not exist until the
+`Setting` is constructed — and it is safe only because `onChange` cannot fire until `display()`
+has returned. TypeScript's definite-assignment analysis does not reach into closures, so nothing
+checks that.
+
+`src/settings.ts` — `ChangelogSettingsTab.display`
+
+<!-- prettier-ignore -->
+```ts
+        text.inputEl.addEventListener("blur", () => {
+          const numValue = Number(text.getValue());
+          if (Number.isNaN(numValue) || numValue < 1) {
+            text.setValue(settings.maxRecentFiles.toString());
+            new Notice(
+              `Max recent files must be between 1 and ${MAX_RECENT_FILES}`,
+            );
+            return;
+          }
+          const flooredValue = clampMaxRecentFiles(numValue);
+          settings.maxRecentFiles = flooredValue;
+          text.setValue(flooredValue.toString());
+          this.plugin.saveSettingsSafely();
+        });
+```
+
+The range rule is implemented twice and the halves disagree. This pre-check rejects `0` and `abc`
+by reverting with a notice; anything above the maximum, or a fraction, falls through to
+`clampMaxRecentFiles` and is rewritten silently. The notice names a range — 1 to 500 — that the
+handler only enforces at the low end.
+
+`src/settings.ts` — `ChangelogSettingsTab.display`
+
+<!-- prettier-ignore -->
+```ts
+        button.setButtonText("Add").onClick(() => {
+          const folder = normalizePath(folderInputEl.value);
+          const verdict = validateExcludedFolder(
+            folder,
+            settings.excludedFolders,
+          );
+          if (verdict === "invalid") {
+            new Notice(
+              "Excluded folder path cannot be empty or the vault root",
+            );
+            return;
+          }
+          if (verdict === "ok") {
+            settings.excludedFolders.push(folder);
+            this.plugin.saveSettingsSafely();
+            folderInputEl.value = "";
+            this.renderExcludedFolders(excludedFoldersList);
           }
         });
 ```
 
-The `never` default is the point. `"duplicate"` used to fall off the end of an if-chain — no
-notice, input not cleared, list not re-rendered, indistinguishable from a dead button — and an
-exhaustive switch is what stops a fourth verdict doing the same thing silently.
+`validateExcludedFolder` returns three verdicts and this handler uses two. `"duplicate"` falls
+off the end: no notice, the input is not cleared, the list is not re-rendered. Adding a folder
+that is already listed is indistinguishable from a dead button.
+
+Note also the shape shared by all seven fields — assign directly into the plugin's settings
+object, then call `saveSettingsSafely()`:
+
+`src/main.ts` — `ChangelogPlugin.saveSettings`
+
+<!-- prettier-ignore -->
+```ts
+  async saveSettings(): Promise<void> {
+    await this.saveData(this.settings);
+  }
+
+  saveSettingsSafely(): void {
+    this.saveSettings().catch(() => {
+      new Notice("Failed to save changelog settings");
+    });
+  }
+```
+
+The assignment has already happened when the persist fails, and nothing rolls it back. The user
+gets a notice; the plugin keeps running on the value; the next restart silently reverts it.
 
 ## Build and release
 
@@ -971,41 +563,22 @@ async function build() {
 `obsidian` and `electron` are marked external and must never be bundled — Obsidian provides both
 at runtime. Minification is on except in watch mode, where a linked sourcemap is more useful.
 
-The release seam is a triple that moves together — `package.json` version, `manifest.json`
-version, and a `versions.json` entry mapping the new version to the current `minAppVersion`.
-
-`version-bump.ts` — `version-bump`
-
-<!-- prettier-ignore -->
-```ts
-const manifest = await Bun.file("manifest.json").json();
-const { minAppVersion } = manifest;
-manifest.version = targetVersion;
-await Bun.write("manifest.json", `${JSON.stringify(manifest, null, 2)}\n`);
-```
-
-The subtle part is that `minAppVersion` is read _before_ the version field is overwritten.
-`release.yml` triggers on a bare `X.Y.Z` tag and creates the GitHub release itself, with build
-provenance attestation.
-
-That makes the tag the publish action, and it is the reason nobody pushes one by hand. Releases
-go through the `release-gate` skill and then `release-ship`, which is user-invoked; the tag
-points at the merged commit of a `release/<version>` prep PR that carries the version bump, the
-changelog entry and the regenerated narrative documents together. A tag pushed directly would
-publish whatever tree it happened to name.
-
 CI runs `bun run build` and then `git diff --exit-code main.js`. Since the committed bundle is
 what ships, any change to `src/` or to a dependency that is not followed by a rebuild fails the
 PR. Bun is deliberately unpinned, so a bundler-output shift trips the same check; the fix is the
 same either way.
 
+Releases go through the `release-gate` skill and then `release-ship`, which is user-invoked. Tags
+are bare `X.Y.Z` and point at the merged commit of a `release/<version>` prep PR;
+`release.yml` triggers on that tag and creates the GitHub release. Nobody pushes a tag by hand.
+
 ## Findings
 
-Filed while tracing the code for this walkthrough.
+This walkthrough describes reverted code, so the rough edges above are not new discoveries — they
+are the defects 1.6.0 and 1.7.0 fixed, now present again. They are recorded in the closed issues
+of that milestone rather than re-filed here.
 
-| Finding                                                                                                                                                                                                         | Severity | Where                                                                         | Status                                                                   |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| The ownership guard's entry-line grammar is coupled to the renderer's output format, and the round-trip test pins agreement only within a single build — not the cross-version recognition the guard exists for | medium   | `src/changelog.ts` — `ENTRY_LINE`, `renderChangelog`                          | [#237](https://github.com/philoserf/obsidian-vault-changelog/issues/237) |
-| `changelogHeading` is the one setting whose rule is still implemented at both boundaries rather than shared                                                                                                     | medium   | `src/changelog.ts` — `normalizeLoadedSettings`, `src/settings.ts` — `display` | [#236](https://github.com/philoserf/obsidian-vault-changelog/issues/236) |
-| Snippets in the previous edition of this document had drifted out of agreement with the source, because prettier reformats code inside fenced blocks                                                            | low      | `WALKTHROUGH.md`                                                              | fixed in this edition                                                    |
-| The changelog-path handler normalizes twice and compares against the middle result                                                                                                                              | low      | `src/settings.ts` — `display`                                                 | [#238](https://github.com/philoserf/obsidian-vault-changelog/issues/238) |
+| Finding                                                                                             | Where       | Status                                                                       |
+| --------------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------- |
+| Thirteen defects fixed in 1.6.0/1.7.0 are present again on `main`, while their issues remain closed | `src/`      | see [#247](https://github.com/philoserf/obsidian-vault-changelog/issues/247) |
+| README has no troubleshooting for failed installs and updates on Windows                            | `README.md` | [#244](https://github.com/philoserf/obsidian-vault-changelog/issues/244)     |
