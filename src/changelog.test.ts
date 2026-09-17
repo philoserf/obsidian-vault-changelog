@@ -199,6 +199,19 @@ describe("clampMaxRecentFiles", () => {
     expect(clampMaxRecentFiles(Number.POSITIVE_INFINITY)).toBe(25);
     expect(clampMaxRecentFiles(undefined)).toBe(25);
   });
+
+  // Number() maps every one of these to a finite 0, which the clamp would
+  // raise to 1. They are the shapes a hand-edited or partially-written
+  // data.json actually produces, and 1 is the answer that looks like a bug.
+  test("falls back to the default for non-numeric input Number() would coerce", () => {
+    expect(clampMaxRecentFiles(null)).toBe(25);
+    expect(clampMaxRecentFiles("")).toBe(25);
+    expect(clampMaxRecentFiles("   ")).toBe(25);
+    expect(clampMaxRecentFiles([])).toBe(25);
+    expect(clampMaxRecentFiles(false)).toBe(25);
+    expect(clampMaxRecentFiles(true)).toBe(25);
+    expect(clampMaxRecentFiles({})).toBe(25);
+  });
 });
 
 describe("normalizeLoadedSettings", () => {
@@ -245,6 +258,13 @@ describe("normalizeLoadedSettings", () => {
       normalizeLoadedSettings({ maxRecentFiles: 9999 }, identity)
         .maxRecentFiles,
     ).toBe(500);
+  });
+
+  test("falls back to the default for a maxRecentFiles Number() would coerce", () => {
+    for (const bad of [null, "", [], false]) {
+      const result = normalizeLoadedSettings({ maxRecentFiles: bad }, identity);
+      expect(result.maxRecentFiles).toBe(DEFAULT_SETTINGS.maxRecentFiles);
+    }
   });
 
   test("trims the changelog heading", () => {
