@@ -69,7 +69,11 @@ It also refuses to overwrite a file that does not look plugin-generated, via `is
 
 ## Release Process
 
-Use the `obsidian-gate` then `obsidian-ship` skills — do not tag by hand. `.github/workflows/release.yml` triggers only on bare `X.Y.Z` tags (no `v` prefix) and publishes `main.js`, `manifest.json`, and `styles.css` with build provenance.
+Run the `release-gate` skill, then the `release-ship` skill — **do not tag by hand**, and do not work through ship's phases manually even though they are readable shell. `release-ship` is **user-invoked only**: when the gate says a release is ready, say so and stop.
+
+Tags are bare semver (`1.7.0`, no `v` prefix) and point at the merged commit of a `release/<version>` prep PR, never at a branch head. `.github/workflows/release.yml` triggers on that tag and publishes `main.js`, `manifest.json` and `styles.css` with build provenance — so the tag is what publishes, which is exactly why it is not a thing to push by hand.
+
+The prep PR carries the version bump, the `CHANGELOG.md` section and the regenerated narrative documents **together**. Splitting the docs into their own PR makes the gate's walkthrough-staleness row fail, correctly: that row asks whether the document moved with the code.
 
 ## Code Style
 
