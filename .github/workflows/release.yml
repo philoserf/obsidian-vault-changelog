@@ -17,14 +17,28 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # jq is preinstalled on ubuntu-latest, so a mismatched tag fails in
+      # seconds, before anything is installed.
+      - name: Verify tag matches package.json, manifest.json and versions.json
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          for f in package.json manifest.json; do
+            v="$(jq -r .version "$f")"
+            [ "$tag" = "$v" ] || { echo "tag $tag != $f $v" >&2; exit 1; }
+          done
+          jq -e --arg t "$tag" 'has($t)' versions.json >/dev/null \
+            || { echo "versions.json has no row for $tag" >&2; exit 1; }
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - run: |
-          bun install
-          bun test
-          bun run build
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      # The release asset must be the committed bundle, not a fresh one that
+      # happens to differ from it.
+      - run: git diff --exit-code main.js
+      - run: bun test
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v4
@@ -42,5 +56,3 @@ jobs:
             styles.css
             manifest.json
           fail_on_unmatched_files: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
