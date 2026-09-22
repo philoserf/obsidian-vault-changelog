@@ -50,7 +50,7 @@ class PathSuggest extends AbstractInputSuggest<string> {
     el.setText(path);
   }
 
-  selectSuggestion(path: string): void {
+  override selectSuggestion(path: string): void {
     this.inputEl.value = path;
     this.inputEl.trigger("input");
     this.inputEl.dispatchEvent(new Event("blur"));
@@ -95,7 +95,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
     });
   }
 
-  display(): void {
+  override display(): void {
     const { containerEl } = this;
     const { settings } = this.plugin;
 
