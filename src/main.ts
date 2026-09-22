@@ -17,14 +17,14 @@ import {
 import { ChangelogSettingsTab } from "./settings";
 
 export default class ChangelogPlugin extends Plugin {
-  settings: ChangelogSettings = DEFAULT_SETTINGS;
+  override settings: ChangelogSettings = DEFAULT_SETTINGS;
   private debouncedVaultChange = debounce(() => {
     void this.updateChangelog().catch(() => {
       new Notice("Failed to update changelog");
     });
   }, 200);
 
-  async onload(): Promise<void> {
+  override async onload(): Promise<void> {
     await this.loadSettings();
     this.addSettingTab(new ChangelogSettingsTab(this.app, this));
 
@@ -94,7 +94,7 @@ export default class ChangelogPlugin extends Plugin {
     );
   }
 
-  onunload(): void {}
+  override onunload(): void {}
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
