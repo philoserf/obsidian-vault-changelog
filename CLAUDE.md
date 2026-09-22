@@ -77,9 +77,9 @@ All three vault events — `modify`, `delete`, `rename` — share one handler, g
 
 ### Build system
 
-- `build.ts` uses Bun's native bundler; entry `src/main.ts` → `./main.js` (CommonJS, minified in production).
+- The `build` and `dev` scripts call `bun build` directly (no build script file); entry `src/main.ts` → `./main.js` (CommonJS, minified in production).
 - `obsidian` and `electron` are marked external — never bundle them.
-- Watch mode (`bun run dev`) skips rebuilds when only test files change.
+- Watch mode (`bun run dev`) is `bun build --watch`: unminified, linked sourcemap, and it rebuilds only when a file the bundle imports changes, so test edits do not trigger it.
 - **`main.js` is committed** — Obsidian ships the committed bundle. CI runs `bun run build` then `git diff --exit-code main.js`, so any change to `src/` or to dependencies must be followed by a rebuild and a commit of `main.js` or the PR fails. Bun is deliberately unpinned in CI, so a bundler-output shift trips the same check — differing minified identifier names are enough — and the fix is the same: rebuild and commit.
 - `tsconfig.json` includes the tests, so `bun run typecheck` covers them. This matters because `ChangelogFile` is structural rather than nominal — a fixture drifting from the real shape is exactly the error only the compiler catches.
 
@@ -87,7 +87,7 @@ All three vault events — `modify`, `delete`, `rename` — share one handler, g
 
 Run the `release-gate` skill, then the `release-ship` skill — **do not tag by hand**, and do not work through ship's phases manually even though they are readable shell. `release-ship` is **user-invoked only**: when the gate says a release is ready, say so and stop.
 
-Tags are bare semver (`1.8.0`, no `v` prefix) and point at the merged commit of a `release/<version>` prep PR, never at a branch head. `.github/workflows/release.yml` triggers on that tag and publishes `main.js`, `manifest.json` and `styles.css` with build provenance — so the tag is what publishes, which is exactly why it is not a thing to push by hand.
+Tags are bare semver (`1.8.0`, no `v` prefix) and point at the merged commit of a `release/<version>` prep PR, never at a branch head. `.github/workflows/release.yml` triggers only on bare-semver tags, refuses one that disagrees with `package.json`, `manifest.json` or `versions.json`, requires the fresh build to match the committed `main.js`, runs the tests, and publishes `main.js`, `manifest.json` and `styles.css` with build provenance — so the tag is what publishes, which is exactly why it is not a thing to push by hand.
 
 The prep PR carries the version bump, the `CHANGELOG.md` section and the regenerated narrative documents **together**. Splitting the docs into their own PR makes the gate's walkthrough-staleness row fail, correctly: that row asks whether the document moved with the code.
 

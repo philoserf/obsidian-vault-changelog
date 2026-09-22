@@ -1,33 +1,29 @@
 version: 2
 updates:
-  - package-ecosystem: npm
+  # `bun`, not `npm`: the npm ecosystem bumps package.json but leaves bun.lock
+  # stale, which `bun install --frozen-lockfile` in CI then rejects.
+  - package-ecosystem: bun
     directory: "/"
     schedule:
       interval: weekly
-      day: monday
-      time: "03:00"
-    open-pull-requests-limit: 10
-    reviewers:
-      - philoserf
-    assignees:
-      - philoserf
+    cooldown:
+      default-days: 3
+    groups:
+      dependencies:
+        patterns: ["*"]
+    assignees: [philoserf]
     commit-message:
-      prefix: "chore"
-      prefix-scope: "deps"
-      include: "scope"
+      prefix: chore
 
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
-      day: monday
-      time: "03:00"
-    open-pull-requests-limit: 10
-    reviewers:
-      - philoserf
-    assignees:
-      - philoserf
+    cooldown:
+      default-days: 3
+    groups:
+      actions:
+        patterns: ["*"]
+    assignees: [philoserf]
     commit-message:
-      prefix: "chore"
-      prefix-scope: "ci"
-      include: "scope"
+      prefix: chore
