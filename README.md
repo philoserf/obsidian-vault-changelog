@@ -1,5 +1,7 @@
 # Vault Changelog
 
+![Status: Stable](https://img.shields.io/badge/Status-Stable-brightgreen.svg)
+
 Maintain a changelog of recently edited notes in [Obsidian](https://obsidian.md/).
 
 Originally created by [Badr Bouslikhin](https://github.com/badrbouslikhin).
