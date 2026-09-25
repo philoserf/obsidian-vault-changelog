@@ -1,10 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(export PATH=*)",
       "Bash(claude mcp list*)",
-      "Bash(gh label list *)",
-      "mcp__apple-eventkit__calendar_list_events"
+      "Bash(gh label list *)"
     ]
   }
 }
