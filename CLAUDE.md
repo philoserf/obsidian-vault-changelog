@@ -93,4 +93,4 @@ The prep PR carries the version bump, the `CHANGELOG.md` section and the regener
 
 ## Code Style
 
-Biome is the single source of truth (2-space indent, organized imports). Run `bun run lint:fix` before committing. Target Bun as the runtime; use `bunx`/`bun run`/`bun install`, never npm or yarn.
+Biome is the single source of truth. Run `bun run lint:fix` before committing. Target Bun as the runtime; use `bunx`/`bun run`/`bun install`, never npm or yarn.
