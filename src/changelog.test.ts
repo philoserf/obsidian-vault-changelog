@@ -6,6 +6,7 @@ import {
   clampMaxRecentFiles,
   DEFAULT_SETTINGS,
   datetimeFormatError,
+  excludedFolderError,
   filterAndSort,
   generateChangelog,
   maxRecentFilesError,
@@ -397,5 +398,24 @@ describe("2.0.0 baseline", () => {
         stripTrailing,
       ).excludedFolders,
     ).toEqual(["Archive"]);
+  });
+});
+
+describe("excludedFolderError", () => {
+  const vault = new Set(["Archive", "Notes/Daily"]);
+  const exists = (folder: string) => vault.has(folder);
+
+  test("accepts a folder the vault has and the list does not", () => {
+    expect(excludedFolderError("Archive", [], exists)).toBeUndefined();
+    expect(
+      excludedFolderError("Notes/Daily", ["Archive"], exists),
+    ).toBeUndefined();
+  });
+
+  test("refuses the vault root, a duplicate, and a folder the vault lacks (#203, #204, #205)", () => {
+    expect(excludedFolderError("/", [], exists)).toBeString();
+    expect(excludedFolderError("Archive", ["Archive"], exists)).toBeString();
+    expect(excludedFolderError("archive", [], exists)).toBeString();
+    expect(excludedFolderError("Nope", [], exists)).toBeString();
   });
 });

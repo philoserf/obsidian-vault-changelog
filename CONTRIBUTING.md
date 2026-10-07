@@ -66,6 +66,12 @@ dependencies needs a new beta and a full re-run. A change that touches only docs
 - [ ] Max recent files: `0`, `501`, `2.5` and text are refused with an inline error.
 - [ ] With auto-update on, change each output-shaping setting: the changelog updates once.
 
+- [ ] Settings search finds each setting by name, including the excluded folders.
+- [ ] Type a changelog path that passes through a valid one on the way, such as
+      `Notes.md/Changelog.md`: nothing is written until the field loses focus.
+- [ ] The command palette shows `Vault Changelog: Update changelog`, and an existing hotkey for
+      it still works.
+
 #### Sync
 
 - [ ] Change a setting on one device: the other picks it up without a restart and without saving.
