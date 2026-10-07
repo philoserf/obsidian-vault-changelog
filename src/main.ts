@@ -19,7 +19,10 @@ import { ChangelogSettingsTab } from "./settings";
 
 export default class ChangelogPlugin extends Plugin {
   override settings: ChangelogSettings = DEFAULT_SETTINGS;
-  private saveQueue: Promise<void> = Promise.resolve();
+  /** The tail of the queue `enqueue` runs operations on. */
+  private queue: Promise<void> = Promise.resolve();
+  /** Set by onunload. Nothing queued runs after it (#301, #302). */
+  private unloaded = false;
   private settingTab: ChangelogSettingsTab | undefined;
   /** The last failure an automatic update reported, until one succeeds. */
   private lastFailure: string | undefined;
@@ -85,7 +88,11 @@ export default class ChangelogPlugin extends Plugin {
     // app, and never be modified afterwards (#291). Obsidian fires create for
     // every file while the vault loads, so listen only once the layout is
     // ready, or startup would run an update per file.
+    // Layout-ready can come after an early unload (a reload during startup).
+    // Registering then would attach to a component that will never release
+    // it (#302).
     this.app.workspace.onLayoutReady(() => {
+      if (this.unloaded) return;
       this.registerEvent(this.app.vault.on("create", (file) => handler(file)));
     });
     this.registerEvent(
@@ -158,7 +165,10 @@ export default class ChangelogPlugin extends Plugin {
    * reports, and a success clears the memory.
    */
   private runUpdate(manual = false): void {
-    this.updateChangelog().then(
+    // Queued, so an update never runs beside a settings save or reload. An
+    // update scheduled while a renamed changelog's new path is being saved
+    // runs after it, against the new path (#300).
+    this.enqueue(() => this.updateChangelog()).then(
       () => {
         this.lastFailure = undefined;
       },
@@ -170,6 +180,28 @@ export default class ChangelogPlugin extends Plugin {
         new Notice(message);
       },
     );
+  }
+
+  /**
+   * Run `op` after everything already queued, one at a time. Everything that
+   * reads settings to decide something, or writes them, goes through here:
+   * settings commits, the sync reload, and changelog writes (#312). A decision
+   * made outside the queue is made against state that a queued write may be
+   * about to replace.
+   *
+   * One rule: a queued operation never awaits the queue, which would deadlock.
+   * Scheduling the debounce from inside one is fine, because the update it
+   * leads to is queued later, when the timer fires.
+   *
+   * Once the plugin has unloaded, queued operations are skipped, so a save
+   * or reload that finishes late cannot lead to a write (#301).
+   */
+  private enqueue(op: () => Promise<void>): Promise<void> {
+    const run = this.queue.then(() => (this.unloaded ? undefined : op()));
+    // The next operation waits for this one, whether or not it failed. The
+    // caller still sees the failure through `run`.
+    this.queue = run.catch(() => undefined);
+    return run;
   }
 
   async loadSettings(): Promise<void> {
@@ -184,11 +216,12 @@ export default class ChangelogPlugin extends Plugin {
    * and assigned only once the write succeeds, so memory never holds a value
    * disk does not (#206), and a failed write needs no rollback.
    *
-   * Writes run one at a time, and each builds its next state from the last
-   * one persisted, inside the queue. The settings tab commits on every
-   * change, so edits overlap routinely. Built outside the queue, two
-   * overlapping edits would each start from the same old state and the
-   * later write would drop the earlier edit.
+   * Writes run one at a time on the queue, and each builds its next state
+   * from the last one persisted. The settings tab commits on every change,
+   * so edits overlap routinely. Built outside the queue, two overlapping
+   * edits would each start from the same old state and the later write would
+   * drop the earlier edit. For the same reason, a caller that edits a
+   * collection passes a function of the current settings, not a value.
    *
    * A change is reported here, never thrown, and has no side effect except
    * scheduling a changelog refresh when auto-update is on (#270). In
@@ -200,7 +233,7 @@ export default class ChangelogPlugin extends Plugin {
       | Partial<ChangelogSettings>
       | ((current: ChangelogSettings) => Partial<ChangelogSettings>),
   ): Promise<void> {
-    const run = this.saveQueue.then(async () => {
+    return this.enqueue(async () => {
       const patch =
         typeof change === "function" ? change(this.settings) : change;
       const next = { ...this.settings, ...patch };
@@ -218,34 +251,35 @@ export default class ChangelogPlugin extends Plugin {
       }
       this.settings = next;
       if (next.autoUpdate) this.debouncedVaultChange();
-    });
-    const reported = run.catch((err: unknown) => {
+    }).catch((err: unknown) => {
       console.error("Vault Changelog: failed to save settings", err);
       new Notice(
         `Failed to save changelog settings: ${err instanceof Error ? err.message : String(err)}`,
       );
     });
-    this.saveQueue = reported;
-    return reported;
   }
 
   /**
    * data.json changed on disk outside this instance: Obsidian Sync, git, or
    * another device (#264). Reload it through the same loader as startup, and
    * never save. A reload that writes makes data.json bounce between devices.
-   * Waiting for queued writes first keeps a write of our own from landing
-   * after, and over, the copy just read.
+   * The reload is queued like a write. A settings edit made while it reads
+   * then builds on the synced settings, not on the copy being replaced
+   * (#297).
    */
   override async onExternalSettingsChange(): Promise<void> {
-    await this.saveQueue;
-    await this.loadSettings();
-    this.settingTab?.update();
-    if (this.settings.autoUpdate) this.debouncedVaultChange();
+    await this.enqueue(async () => {
+      await this.loadSettings();
+      this.settingTab?.update();
+      if (this.settings.autoUpdate) this.debouncedVaultChange();
+    });
   }
 
   override onunload(): void {
-    // registerEvent releases the vault listeners; the pending timer is ours to
-    // cancel, or a disabled or replaced plugin still writes (#201).
+    // registerEvent releases the vault listeners. The pending timer and the
+    // queue are ours: cancel the one and stop the other, or a disabled or
+    // replaced plugin still writes (#201, #301).
+    this.unloaded = true;
     this.debouncedVaultChange.cancel();
   }
 }
