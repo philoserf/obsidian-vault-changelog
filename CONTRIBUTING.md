@@ -81,6 +81,10 @@ dependencies needs a new beta and a full re-run. A change that touches only docs
 
 - [ ] Rename the changelog: no ghost file at the old path, and the changelog does not list itself.
 - [ ] Move the changelog to another folder, then move its folder, then undo.
+- [ ] Rename the changelog to `Changelog.txt`: the setting does not follow it, and the next update
+      writes a fresh changelog at the configured path.
+- [ ] With auto-update on, edit a note and rename the changelog within 200 ms: no ghost appears at
+      the old path.
 
 #### Rendering
 

@@ -9,6 +9,7 @@ import {
 
 import {
   type ChangelogSettings,
+  changelogPathError,
   DEFAULT_SETTINGS,
   filterAndSort,
   generateChangelog,
@@ -55,7 +56,28 @@ export default class ChangelogPlugin extends Plugin {
     };
     this.registerEvent(this.app.vault.on("modify", handler));
     this.registerEvent(this.app.vault.on("delete", handler));
-    this.registerEvent(this.app.vault.on("rename", handler));
+    // rename alone carries oldPath, the only value that can say the renamed
+    // file was the changelog. Without it the setting goes stale: the next
+    // update recreates a ghost at the old path and lists the moved
+    // changelog as an ordinary note (#196).
+    this.registerEvent(
+      this.app.vault.on("rename", (file, oldPath) => {
+        if (
+          file instanceof TFile &&
+          oldPath === this.settings.changelogPath &&
+          changelogPathError(file.path) === undefined
+        ) {
+          // The new path is assigned only once it is saved. An update
+          // already pending would run in that gap against the old path, so
+          // cancel it. updateSettings schedules a fresh one after the
+          // assignment when auto-update is on.
+          this.debouncedVaultChange.cancel();
+          void this.updateSettings({ changelogPath: file.path });
+          return;
+        }
+        handler(file);
+      }),
+    );
   }
 
   async updateChangelog(): Promise<void> {
