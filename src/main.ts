@@ -19,9 +19,7 @@ import { ChangelogSettingsTab } from "./settings";
 export default class ChangelogPlugin extends Plugin {
   override settings: ChangelogSettings = DEFAULT_SETTINGS;
   private debouncedVaultChange = debounce(() => {
-    void this.updateChangelog().catch(() => {
-      new Notice("Failed to update changelog");
-    });
+    this.runUpdate();
   }, 200);
 
   override async onload(): Promise<void> {
@@ -32,9 +30,7 @@ export default class ChangelogPlugin extends Plugin {
       id: "update-changelog",
       name: "Update Changelog",
       callback: () => {
-        this.updateChangelog().catch(() => {
-          new Notice("Failed to update changelog");
-        });
+        this.runUpdate();
       },
     });
 
@@ -69,22 +65,42 @@ export default class ChangelogPlugin extends Plugin {
     await this.writeToFile(this.settings.changelogPath, changelog);
   }
 
+  /**
+   * The one place an update failure is reported, for both the command and
+   * the debounced vault handler. Every failure in the write path throws, so
+   * the reason reaches the user and the developer console, not a fixed
+   * message with the error discarded (#217).
+   */
+  private runUpdate(): void {
+    this.updateChangelog().catch((err: unknown) => {
+      console.error("Vault Changelog: update failed", err);
+      new Notice(
+        `Failed to update changelog: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+  }
+
   async writeToFile(path: string, content: string): Promise<void> {
     let file = this.app.vault.getAbstractFileByPath(path);
     if (!file) {
       try {
         file = await this.app.vault.create(path, "");
-      } catch {
+      } catch (createErr) {
         // File may have been created by a concurrent event (TOCTOU race)
         file = this.app.vault.getAbstractFileByPath(path);
-        if (!file) throw new Error(`Failed to create changelog at: ${path}`);
+        if (!file) {
+          const reason =
+            createErr instanceof Error ? createErr.message : String(createErr);
+          throw new Error(`could not create ${path}: ${reason}`, {
+            cause: createErr,
+          });
+        }
       }
     }
-    if (file instanceof TFile) {
-      await this.app.vault.modify(file, content);
-    } else {
-      new Notice(`Could not update changelog at path: ${path}`);
+    if (!(file instanceof TFile)) {
+      throw new Error(`${path} is a folder, not a note`);
     }
+    await this.app.vault.modify(file, content);
   }
 
   async loadSettings(): Promise<void> {
