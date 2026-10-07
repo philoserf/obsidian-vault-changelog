@@ -129,6 +129,39 @@ export function excludedFolderError(
 }
 
 /**
+ * The excluded folders without `folder`. Rows are removed by the value they
+ * showed, not their position: the tab draws a row, and the removal runs later
+ * against whatever the list holds by then (#295). A folder already gone
+ * leaves the list unchanged.
+ */
+export function withoutExcludedFolder(
+  folders: string[],
+  folder: string,
+): string[] {
+  return folders.filter((other) => other !== folder);
+}
+
+/**
+ * The excluded folders with `previous` replaced by `next`, or with `next`
+ * appended when the row is new (`previous` undefined) or its value has gone
+ * from the list. Like a removal, this runs against the list as it is by
+ * then, so it never assigns by position and never leaves a hole (#296). The
+ * rule is checked again against that list, and a `next` that breaks it
+ * leaves the list unchanged.
+ */
+export function withExcludedFolder(
+  folders: string[],
+  previous: string | undefined,
+  next: string,
+): string[] {
+  const at = previous === undefined ? -1 : folders.indexOf(previous);
+  const others = folders.filter((_, index) => index !== at);
+  if (excludedFolderError(next, others) !== undefined) return folders;
+  if (at === -1) return [...folders, next];
+  return folders.map((folder, index) => (index === at ? next : folder));
+}
+
+/**
  * Load rule for excludedFolders. A list holding anything but strings is
  * corrupt and falls back whole. Otherwise each entry is normalized and kept
  * only if the Add button would have accepted it against the entries kept so
