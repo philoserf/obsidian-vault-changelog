@@ -81,8 +81,10 @@ does not try to protect a note the user points it at (#197).
 
 - [ ] Rename the changelog: no ghost file at the old path, and the changelog does not list itself.
 - [ ] Move the changelog to another folder, then move its folder, then undo.
-- [ ] Rename the changelog to `Changelog.txt`: the setting does not follow it, and the next update
-      writes a fresh changelog at the configured path.
+- [ ] Rename the changelog to `Changelog.txt`: a Notice says it is now an ordinary file and names
+      the path the plugin keeps writing to. The setting does not follow it, `Changelog.txt` is left
+      alone, and the next update writes a fresh changelog at the configured path.
+- [ ] With auto-update on, rename a listed note to `.txt`: the changelog drops its row.
 - [ ] With auto-update on, edit a note and rename the changelog within 200 ms: no ghost appears at
       the old path.
 
