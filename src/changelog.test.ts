@@ -15,6 +15,10 @@ import {
 } from "./changelog";
 
 const formatter = (mtime: number, fmt: string) => moment(mtime).format(fmt);
+// Path normalizers to inject into the loader: none, and the one behaviour of
+// Obsidian's normalizePath the tests rely on.
+const identity = (p: string) => p;
+const stripTrailing = (p: string) => p.replace(/\/+$/, "");
 
 describe("filterAndSort", () => {
   const files = [
@@ -278,18 +282,15 @@ describe("clampMaxRecentFiles", () => {
     expect(clampMaxRecentFiles(Number.POSITIVE_INFINITY)).toBe(25);
     expect(clampMaxRecentFiles(undefined)).toBe(25);
   });
+
+  test("falls back for every non-numeric value (#209)", () => {
+    for (const bad of [null, "", "  ", [], false, true, {}]) {
+      expect(clampMaxRecentFiles(bad)).toBe(DEFAULT_SETTINGS.maxRecentFiles);
+    }
+  });
 });
 
 describe("normalizeLoadedSettings", () => {
-  const identity = (p: string) => p;
-
-  test("returns defaults for null/undefined data", () => {
-    expect(normalizeLoadedSettings(null, identity)).toEqual(DEFAULT_SETTINGS);
-    expect(normalizeLoadedSettings(undefined, identity)).toEqual(
-      DEFAULT_SETTINGS,
-    );
-  });
-
   test("drops unknown keys", () => {
     const settings = normalizeLoadedSettings(
       { autoUpdate: true, legacySetting: "stale" },
@@ -300,7 +301,6 @@ describe("normalizeLoadedSettings", () => {
   });
 
   test("normalizes changelogPath and excludedFolders", () => {
-    const stripTrailing = (p: string) => p.replace(/\/+$/, "");
     const settings = normalizeLoadedSettings(
       {
         changelogPath: "Notes/Changelog.md/",
@@ -312,14 +312,7 @@ describe("normalizeLoadedSettings", () => {
     expect(settings.excludedFolders).toEqual(["Archive", "Templates"]);
   });
 
-  test("clamps invalid maxRecentFiles", () => {
-    expect(
-      normalizeLoadedSettings({ maxRecentFiles: Number.NaN }, identity)
-        .maxRecentFiles,
-    ).toBe(25);
-    expect(
-      normalizeLoadedSettings({ maxRecentFiles: -3 }, identity).maxRecentFiles,
-    ).toBe(1);
+  test("clamps maxRecentFiles through clampMaxRecentFiles", () => {
     expect(
       normalizeLoadedSettings({ maxRecentFiles: 9999 }, identity)
         .maxRecentFiles,
@@ -366,6 +359,28 @@ describe("normalizeLoadedSettings", () => {
     expect(settings.autoUpdate).toBe(DEFAULT_SETTINGS.autoUpdate);
     expect(settings.useWikiLinks).toBe(DEFAULT_SETTINGS.useWikiLinks);
   });
+
+  test("never hands out the default excludedFolders array (#266)", () => {
+    expect(normalizeLoadedSettings(null, identity).excludedFolders).not.toBe(
+      DEFAULT_SETTINGS.excludedFolders,
+    );
+    expect(normalizeLoadedSettings({}, identity).excludedFolders).not.toBe(
+      DEFAULT_SETTINGS.excludedFolders,
+    );
+    expect(
+      normalizeLoadedSettings({ excludedFolders: [1] }, identity)
+        .excludedFolders,
+    ).not.toBe(DEFAULT_SETTINGS.excludedFolders);
+  });
+
+  test("loads excluded folders that normalize alike as one (#211)", () => {
+    expect(
+      normalizeLoadedSettings(
+        { excludedFolders: ["Archive/", "Archive"] },
+        stripTrailing,
+      ).excludedFolders,
+    ).toEqual(["Archive"]);
+  });
 });
 
 describe("changelogPathError", () => {
@@ -405,16 +420,8 @@ describe("maxRecentFilesError", () => {
 });
 
 describe("loading settings by rule", () => {
-  const identity = (p: string) => p;
-
-  test("clampMaxRecentFiles falls back for every non-numeric value (#209)", () => {
-    for (const bad of [null, "", "  ", [], false, true, {}]) {
-      expect(clampMaxRecentFiles(bad)).toBe(DEFAULT_SETTINGS.maxRecentFiles);
-    }
-  });
-
-  test("non-object data loads as the defaults", () => {
-    for (const raw of ["junk", 42, true, []]) {
+  test("missing or non-object data loads as the defaults", () => {
+    for (const raw of [null, undefined, "junk", 42, true, []]) {
       expect(normalizeLoadedSettings(raw, identity)).toEqual(DEFAULT_SETTINGS);
     }
   });
@@ -436,30 +443,6 @@ describe("loading settings by rule", () => {
     expect(settings.changelogPath).toBe("Logs/Recent.md");
     expect(settings.datetimeFormat).toBe("HH:mm");
   });
-});
-
-// Defects recorded before 2.0.0 fixed them (#263): each was pinned as
-// test.failing first, then flipped by the step that fixed it.
-describe("2.0.0 baseline", () => {
-  const identity = (p: string) => p;
-  const stripTrailing = (p: string) => p.replace(/\/+$/, "");
-
-  test("the loader never hands out the default excludedFolders array (#266)", () => {
-    expect(normalizeLoadedSettings(null, identity).excludedFolders).not.toBe(
-      DEFAULT_SETTINGS.excludedFolders,
-    );
-    expect(normalizeLoadedSettings({}, identity).excludedFolders).not.toBe(
-      DEFAULT_SETTINGS.excludedFolders,
-    );
-    expect(
-      normalizeLoadedSettings({ excludedFolders: [1] }, identity)
-        .excludedFolders,
-    ).not.toBe(DEFAULT_SETTINGS.excludedFolders);
-  });
-
-  test("a null maxRecentFiles falls back to the default (#209)", () => {
-    expect(clampMaxRecentFiles(null)).toBe(DEFAULT_SETTINGS.maxRecentFiles);
-  });
 
   test("a persisted non-markdown changelogPath falls back on load (#213)", () => {
     expect(
@@ -472,15 +455,6 @@ describe("2.0.0 baseline", () => {
     expect(
       normalizeLoadedSettings({ datetimeFormat: "" }, identity).datetimeFormat,
     ).toBe(DEFAULT_SETTINGS.datetimeFormat);
-  });
-
-  test("excluded folders that normalize alike load as one (#211)", () => {
-    expect(
-      normalizeLoadedSettings(
-        { excludedFolders: ["Archive/", "Archive"] },
-        stripTrailing,
-      ).excludedFolders,
-    ).toEqual(["Archive"]);
   });
 });
 
