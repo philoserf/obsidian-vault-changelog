@@ -157,6 +157,12 @@ function loadExcludedFolders(
  * and `__proto__` keys cannot reach it, and nothing in it is shared with
  * DEFAULT_SETTINGS (#208). `normalize` is injected (Obsidian's
  * normalizePath in production) to keep this module Obsidian-free.
+ *
+ * Every field's load form coerces to its default, except one. A saved
+ * changelogPath that fails its rule is kept, and the write refuses it
+ * (#298). Its default names a note, and replacing a bad path with it would
+ * guess which note the plugin may overwrite (#250). Only a path that is
+ * missing, blank or not a string loads the default, as on a fresh install.
  */
 export function normalizeLoadedSettings(
   raw: unknown,
@@ -170,14 +176,14 @@ export function normalizeLoadedSettings(
   const bool = (value: unknown, fallback: boolean): boolean =>
     typeof value === "boolean" ? value : fallback;
 
-  const changelogPath = normalize(str(loaded.changelogPath));
+  const savedPath = str(loaded.changelogPath);
   const datetimeFormat = str(loaded.datetimeFormat);
   return {
     autoUpdate: bool(loaded.autoUpdate, DEFAULT_SETTINGS.autoUpdate),
     changelogPath:
-      changelogPathError(changelogPath) === undefined
-        ? changelogPath
-        : DEFAULT_SETTINGS.changelogPath,
+      savedPath.trim() === ""
+        ? DEFAULT_SETTINGS.changelogPath
+        : normalize(savedPath),
     datetimeFormat:
       datetimeFormatError(datetimeFormat) === undefined
         ? datetimeFormat

@@ -52,7 +52,9 @@ does not try to protect a note the user points it at (#197).
 - [ ] `data.json` with every field set.
 - [ ] Corrupt `data.json`: `maxRecentFiles: null`, `datetimeFormat: ""`, `changelogPath: "Notes"`,
       `excludedFolders: ["Archive/", "Archive"]`, plus an unknown key. Each loads to its
-      documented value and shows correctly in the settings tab.
+      documented value and shows correctly in the settings tab. `changelogPath: "Notes"` is kept,
+      not replaced by `Changelog.md`. The update shows a Notice naming the path, and nothing is
+      written. With auto-update on, further edits do not repeat the Notice, while the command does.
 - [ ] Obsidian older than the new `minAppVersion` still resolves to 1.8.0 (`versions.json`).
 
 #### Settings edits
