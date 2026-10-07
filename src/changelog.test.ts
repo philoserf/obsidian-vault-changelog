@@ -561,29 +561,59 @@ describe("1.8.0 fixtures (#263)", () => {
   });
 
   for (const fixture of fixtures180) {
-    test(`renders what 1.8.0 wrote: ${fixture.name}`, () => {
+    test(`renders what 1.8.0 wrote, telling same-named notes apart: ${fixture.name}`, () => {
       process.env.TZ = fixture.timeZone;
       const files = fixture.files.map((f) => ({
         path: f.path,
         basename: f.basename,
         stat: { mtime: f.mtime },
       }));
-      const { settings } = fixture;
+      // What Obsidian's fileToLinktext gives: the bare name when it is unique
+      // in the vault, the path without its extension when it is not.
+      const count = (basename: string) =>
+        files.filter((f) => f.basename === basename).length;
+      const vaultLinkText = (file: { path: string; basename: string }) =>
+        count(file.basename) > 1
+          ? file.path.replace(/\.md$/, "")
+          : file.basename;
+
+      const rendered = renderChangelog(
+        files,
+        fixture.settings,
+        formatter,
+        vaultLinkText,
+      ).split("\n");
+      const shipped = fixture.output.split("\n");
+      expect(rendered).toHaveLength(shipped.length);
+
       const rows = filterAndSort(
         files,
-        settings.changelogPath,
-        settings.excludedFolders,
-        settings.maxRecentFiles,
+        fixture.settings.changelogPath,
+        fixture.settings.excludedFolders,
+        fixture.settings.maxRecentFiles,
       );
-      expect(
-        generateChangelog(
-          rows,
-          settings.datetimeFormat,
-          settings.useWikiLinks,
-          settings.changelogHeading,
-          formatter,
-        ),
-      ).toBe(fixture.output);
+      const repeated = (name: string) =>
+        rows.filter((f) => f.basename === name).length > 1;
+      const heading = fixture.settings.changelogHeading ? 2 : 0;
+      rendered.forEach((line, i) => {
+        const row = rows[i - heading];
+        // A row is ambiguous when its name alone does not identify its note.
+        // A wiki-link resolves against the whole vault, so a name shared with
+        // any note counts, listed or not. Plain text is read against the list,
+        // so only a name repeated among the rows counts (#202).
+        const ambiguous =
+          row !== undefined &&
+          (fixture.settings.useWikiLinks
+            ? count(row.basename) > 1
+            : repeated(row.basename));
+        if (ambiguous) {
+          // 1.8.0 wrote the bare name; 2.0.0 names the note.
+          expect(line).not.toBe(shipped[i] ?? "");
+          expect(line).toContain(row.path.replace(/\.md$/, ""));
+        } else {
+          expect(line).toBe(shipped[i] ?? "<missing line>");
+        }
+      });
     });
   }
 });
