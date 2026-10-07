@@ -32,18 +32,18 @@ dependencies needs a new beta and a full re-run. A change that touches only docs
 
 ### Checklist
 
-#### Ownership of the changelog file
+#### The changelog file
+
+The note at the changelog path is the plugin's to replace, in full, on every update. The plugin
+does not try to protect a note the user points it at (#197).
 
 - [ ] Empty vault, then change the heading: the changelog is still written.
-- [ ] A note of your own whose bullets contain `·` placed at the changelog path is refused, with
-      one Notice per session, and left untouched.
-- [ ] Upgrade from 1.8.0: the existing changelog is adopted and gets the marker on its next write.
-- [ ] Upgrade from 1.8.0 with the old changelog at a different path than the setting: it is not
-      adopted.
-- [ ] An empty existing note at the path is accepted.
-- [ ] Rename another note onto the changelog path: the next write is refused.
-- [ ] Change the path away from an existing changelog: a Notice says the old file is now an
-      ordinary note, and it is not deleted.
+- [ ] Another plugin edits the changelog after each write (for example, adds frontmatter): the
+      plugin keeps writing it.
+- [ ] Upgrade from 1.8.0: the existing changelog keeps being written, and nothing is asked.
+- [ ] Change the path away from an existing changelog: a Notice names the old file as an ordinary
+      note, and it is not deleted.
+- [ ] Change the path when no changelog exists at the old path: no Notice.
 
 #### Upgrade from 1.8.0 settings
 
