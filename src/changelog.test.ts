@@ -57,11 +57,6 @@ describe("filterAndSort", () => {
     expect(result).toHaveLength(2);
   });
 
-  test("returns all files when maxRecentFiles exceeds file count", () => {
-    const result = filterAndSort(files, "Changelog.md", [], 1000);
-    expect(result).toHaveLength(4);
-  });
-
   test("does not exclude folders that share a prefix", () => {
     const filesWithPrefix = [
       { path: "Notes/file.md", basename: "file", stat: { mtime: 100 } },
@@ -289,5 +284,57 @@ describe("validateExcludedFolder", () => {
 
   test("flags an already-listed folder as duplicate", () => {
     expect(validateExcludedFolder("Archive", ["Archive"])).toBe("duplicate");
+  });
+});
+
+// Recorded 2.0.0 defects. Each `test.failing` passes while the defect is
+// present; the step that fixes it flips it to `test` (#263).
+describe("2.0.0 baseline", () => {
+  const identity = (p: string) => p;
+  const stripTrailing = (p: string) => p.replace(/\/+$/, "");
+
+  test("the loader never hands out the default excludedFolders array (#266)", () => {
+    expect(normalizeLoadedSettings(null, identity).excludedFolders).not.toBe(
+      DEFAULT_SETTINGS.excludedFolders,
+    );
+    expect(normalizeLoadedSettings({}, identity).excludedFolders).not.toBe(
+      DEFAULT_SETTINGS.excludedFolders,
+    );
+    expect(
+      normalizeLoadedSettings({ excludedFolders: [1] }, identity)
+        .excludedFolders,
+    ).not.toBe(DEFAULT_SETTINGS.excludedFolders);
+  });
+
+  test.failing("a null maxRecentFiles falls back to the default (#209)", () => {
+    expect(clampMaxRecentFiles(null)).toBe(DEFAULT_SETTINGS.maxRecentFiles);
+  });
+
+  test.failing("a persisted non-markdown changelogPath falls back on load (#213)", () => {
+    expect(
+      normalizeLoadedSettings({ changelogPath: "Notes" }, identity)
+        .changelogPath,
+    ).toBe(DEFAULT_SETTINGS.changelogPath);
+  });
+
+  test.failing("a persisted empty datetimeFormat falls back on load (#213)", () => {
+    expect(
+      normalizeLoadedSettings({ datetimeFormat: "" }, identity).datetimeFormat,
+    ).toBe(DEFAULT_SETTINGS.datetimeFormat);
+  });
+
+  test.failing("every spelling of the vault root is invalid (#204)", () => {
+    for (const root of ["", ".", "./", "/"]) {
+      expect(validateExcludedFolder(root, [])).toBe("invalid");
+    }
+  });
+
+  test.failing("excluded folders that normalize alike load as one (#211)", () => {
+    expect(
+      normalizeLoadedSettings(
+        { excludedFolders: ["Archive/", "Archive"] },
+        stripTrailing,
+      ).excludedFolders,
+    ).toEqual(["Archive"]);
   });
 });

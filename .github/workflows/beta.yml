@@ -1,0 +1,80 @@
+name: Beta
+
+# Cuts a 2.0.0 beta as a GitHub prerelease for BRAT, from the v2 branch.
+# The beta version lives only in this run's manifest.json: nothing is
+# committed, so package.json stays honest and versions.json gets no beta
+# rows. Store users never see it — Obsidian reads manifest.json from main.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Beta version, e.g. 2.0.0-beta.1"
+        required: true
+
+permissions: {}
+
+jobs:
+  beta:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Refuse anything but a beta version from v2
+        env:
+          VERSION: ${{ inputs.version }}
+          REF: ${{ github.ref_name }}
+        run: |
+          [ "$REF" = "v2" ] || { echo "run this from v2, not $REF" >&2; exit 1; }
+          printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$' \
+            || { echo "not a beta version: $VERSION" >&2; exit 1; }
+
+      - uses: actions/checkout@v7
+
+      - name: Refuse a version that already has a release
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "release $VERSION already exists" >&2; exit 1
+          fi
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      # The beta must be the committed bundle, exactly as reviewed.
+      - run: git diff --exit-code main.js
+      - run: bun test
+
+      - name: Stamp the beta version into manifest.json (this run only)
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          jq --arg v "$VERSION" '.version = $v' manifest.json > manifest.tmp
+          mv manifest.tmp manifest.json
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
+
+      - name: Create prerelease
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.version }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          files: |
+            main.js
+            styles.css
+            manifest.json
+          fail_on_unmatched_files: true
