@@ -167,18 +167,25 @@ export function normalizeLoadedSettings(
   };
 }
 
+/** The three fields the core reads. A real TFile satisfies it, and so does a literal. */
 interface ChangelogFile {
   path: string;
   basename: string;
   stat: { mtime: number };
 }
 
-export function filterAndSort(
-  files: ChangelogFile[],
+/**
+ * Which files appear, and in what order: never the changelog itself, never
+ * anything under an excluded folder, newest first, at most maxRecentFiles.
+ * A folder matches only as a whole path segment, so excluding `Notes` does
+ * not exclude `Notes2/`.
+ */
+export function filterAndSort<F extends ChangelogFile>(
+  files: F[],
   changelogPath: string,
   excludedFolders: string[],
   maxRecentFiles: number,
-): ChangelogFile[] {
+): F[] {
   return files
     .filter((file) => {
       if (file.path === changelogPath) return false;
@@ -194,17 +201,52 @@ export function filterAndSort(
 
 export type TimeFormatter = (mtime: number, format: string) => string;
 
-export function generateChangelog(
-  files: ChangelogFile[],
-  datetimeFormat: string,
-  useWikiLinks: boolean,
-  changelogHeading: string,
+/**
+ * The text a wiki-link should carry for a file. Injected like the time
+ * formatter: production asks Obsidian, which gives the bare name when it is
+ * unique in the vault and a path when it is not (#202).
+ */
+export type LinkText<F extends ChangelogFile> = (file: F) => string;
+
+/**
+ * The whole changelog for the vault's markdown files, as the settings
+ * describe it. This is the one render entry point (#195): it chooses the
+ * files and formats them, so no caller can format a list it forgot to
+ * filter.
+ *
+ * Two notes may share a basename. With wiki-links, `linkText` tells them
+ * apart. In plain text a row names its note by path when another row has
+ * the same basename, and by basename otherwise (#202).
+ */
+export function renderChangelog<F extends ChangelogFile>(
+  files: F[],
+  settings: ChangelogSettings,
   formatTime: TimeFormatter,
+  linkText: LinkText<F>,
 ): string {
-  let content = changelogHeading ? `${changelogHeading}\n\n` : "";
-  for (const file of files) {
-    const time = formatTime(file.stat.mtime, datetimeFormat);
-    const name = useWikiLinks ? `[[${file.basename}]]` : file.basename;
+  const rows = filterAndSort(
+    files,
+    settings.changelogPath,
+    settings.excludedFolders,
+    settings.maxRecentFiles,
+  );
+  const repeated = new Set<string>();
+  const seen = new Set<string>();
+  for (const file of rows) {
+    if (seen.has(file.basename)) repeated.add(file.basename);
+    seen.add(file.basename);
+  }
+
+  let content = settings.changelogHeading
+    ? `${settings.changelogHeading}\n\n`
+    : "";
+  for (const file of rows) {
+    const time = formatTime(file.stat.mtime, settings.datetimeFormat);
+    const name = settings.useWikiLinks
+      ? `[[${linkText(file)}]]`
+      : repeated.has(file.basename)
+        ? file.path
+        : file.basename;
     content += `- ${time} · ${name}\n`;
   }
   return content;
