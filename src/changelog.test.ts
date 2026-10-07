@@ -39,19 +39,14 @@ describe("filterAndSort", () => {
   });
 
   test("excludes files in excluded folders", () => {
-    const result = filterAndSort(files, "Changelog.md", ["Archive/"], 25);
-    expect(result.find((f) => f.path.startsWith("Archive/"))).toBeUndefined();
-  });
-
-  test("excludes folders saved without trailing slash", () => {
-    // normalizePath strips trailing slashes, so "Archive" is the shape
-    // the settings layer actually persists.
+    // normalizePath strips trailing slashes, so "Archive" is the only shape
+    // the settings layer persists (#307).
     const result = filterAndSort(files, "Changelog.md", ["Archive"], 25);
     expect(result.find((f) => f.path.startsWith("Archive/"))).toBeUndefined();
   });
 
   test("sorts by mtime descending", () => {
-    const result = filterAndSort(files, "Changelog.md", ["Archive/"], 25);
+    const result = filterAndSort(files, "Changelog.md", ["Archive"], 25);
     expect(result.map((f) => f.basename)).toEqual([
       "Note B",
       "Note C",

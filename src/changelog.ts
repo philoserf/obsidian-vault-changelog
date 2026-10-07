@@ -163,7 +163,8 @@ interface ChangelogFile {
  * Which files appear, and in what order: never the changelog itself, never
  * anything under an excluded folder, newest first, at most maxRecentFiles.
  * A folder matches only as a whole path segment, so excluding `Notes` does
- * not exclude `Notes2/`.
+ * not exclude `Notes2/`. Folders arrive normalized, without a trailing
+ * slash.
  */
 export function filterAndSort<F extends ChangelogFile>(
   files: F[],
@@ -175,8 +176,7 @@ export function filterAndSort<F extends ChangelogFile>(
     .filter((file) => {
       if (file.path === changelogPath) return false;
       for (const folder of excludedFolders) {
-        if (file.path.startsWith(folder.endsWith("/") ? folder : `${folder}/`))
-          return false;
+        if (file.path.startsWith(`${folder}/`)) return false;
       }
       return true;
     })
