@@ -134,7 +134,10 @@ export class ChangelogSettingsTab extends PluginSettingTab {
         heading: "Excluded folders",
         emptyState: "No excluded folders",
         items: Array.from({ length: rows }, (_, index) => ({
-          name: folders[index] ?? "New excluded folder",
+          // The path is in the field, so the label does not repeat it (#288).
+          // It stays an alias, so settings search still finds the row by path.
+          name: index < folders.length ? "Folder" : "New folder",
+          ...(folders[index] ? { aliases: [folders[index]] } : {}),
           control: {
             type: "folder" as const,
             key: `excludedFolders.${index}`,
