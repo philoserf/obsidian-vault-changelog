@@ -100,6 +100,8 @@ does not try to protect a note the user points it at (#197).
 - [ ] Edit an image, a note in an excluded folder, and the top note twice inside one minute: the
       changelog's modified time does not change.
 - [ ] Type steadily in a note: the changelog is written once after typing stops.
+- [ ] A stream of note changes less than 200 ms apart, such as a first Sync of many notes: the
+      changelog is written about every two seconds while it lasts, and once more when it ends.
 
 #### Errors
 
@@ -117,6 +119,10 @@ does not try to protect a note the user points it at (#197).
 #### Excluded folders
 
 - [ ] Add, delete, a duplicate, a folder that does not exist, and the vault root.
+- [ ] With three folders listed, delete the first two in quick succession: exactly those two go,
+      and the third stays.
+- [ ] Delete a folder and, before the list redraws, pick a folder in a new row: the list has no
+      gap, and every update still runs.
 
 #### Mobile
 
