@@ -4,6 +4,7 @@ import {
   normalizePath,
   PluginSettingTab,
   type SettingDefinitionItem,
+  TFile,
   TFolder,
 } from "obsidian";
 
@@ -72,9 +73,11 @@ export class ChangelogSettingsTab extends PluginSettingTab {
                 new Notice(error);
                 return;
               }
-              if (next !== this.plugin.settings.changelogPath) {
-                void this.plugin.updateSettings({ changelogPath: next });
-              }
+              const previous = this.plugin.settings.changelogPath;
+              if (next === previous) return;
+              void this.plugin
+                .updateSettings({ changelogPath: next })
+                .then(() => this.noticeOldChangelog(previous));
             });
           });
         },
@@ -201,6 +204,22 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       return;
     }
     await this.plugin.updateSettings({ [key]: value });
+  }
+
+  /**
+   * The changelog path moved away from `previous`. A changelog left there is
+   * now an ordinary note, and it will be listed in the new changelog like any
+   * other. Say so, and leave it alone: deleting or rewriting it would mean
+   * guessing whose file it is, which the plugin never does (#271, #250).
+   */
+  private noticeOldChangelog(previous: string): void {
+    if (this.plugin.settings.changelogPath === previous) return; // the save failed
+    if (!(this.app.vault.getAbstractFileByPath(previous) instanceof TFile)) {
+      return;
+    }
+    new Notice(
+      `The previous changelog at ${previous} is now an ordinary note. Delete it if you no longer need it.`,
+    );
   }
 
   private showPreview(format: string): void {
