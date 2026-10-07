@@ -411,12 +411,11 @@ describe("vaultEventEffect (#313)", () => {
       "Changelog.md",
       { follow: "Logs/Changelog.md" },
     ],
-    // This row and the last pin today's behaviour, which #299 changes.
     [
-      "the changelog is renamed to non-markdown",
+      "the changelog is renamed to non-markdown (#299)",
       "Changelog.txt",
       "Changelog.md",
-      "ignore",
+      { cannotFollow: "Changelog.txt" },
     ],
     [
       "a note is renamed onto the changelog path",
@@ -424,7 +423,14 @@ describe("vaultEventEffect (#313)", () => {
       "Notes/Old.md",
       "ignore",
     ],
-    ["a note is renamed away from markdown", "Idea.txt", "Idea.md", "ignore"],
+    // Its row leaves the changelog, and only oldPath shows it was a row.
+    [
+      "a note is renamed away from markdown (#299)",
+      "Idea.txt",
+      "Idea.md",
+      "refresh",
+    ],
+    ["a non-markdown file is renamed", "pic2.png", "pic.png", "ignore"],
   ];
   for (const [when, path, oldPath, effect] of cases) {
     test(when, () => {

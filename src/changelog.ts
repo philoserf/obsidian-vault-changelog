@@ -60,7 +60,11 @@ export function changelogPathError(normalizedPath: string): string | undefined {
 }
 
 /** What a vault event asks of the plugin. */
-export type VaultEventEffect = "ignore" | "refresh" | { follow: string };
+export type VaultEventEffect =
+  | "ignore"
+  | "refresh"
+  | { follow: string }
+  | { cannotFollow: string };
 
 /**
  * What a vault event on the file at `path` means for the changelog.
