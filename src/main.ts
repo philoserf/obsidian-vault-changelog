@@ -18,9 +18,16 @@ import { ChangelogSettingsTab } from "./settings";
 
 export default class ChangelogPlugin extends Plugin {
   override settings: ChangelogSettings = DEFAULT_SETTINGS;
-  private debouncedVaultChange = debounce(() => {
-    this.runUpdate();
-  }, 200);
+  // resetTimer = true makes this a trailing-edge debounce: one update once
+  // editing has been quiet for 200 ms. Left at its default of false it is a
+  // throttle that fires repeatedly through a burst of autosaves (#193).
+  private debouncedVaultChange = debounce(
+    () => {
+      this.runUpdate();
+    },
+    200,
+    true,
+  );
 
   override async onload(): Promise<void> {
     await this.loadSettings();
@@ -110,7 +117,11 @@ export default class ChangelogPlugin extends Plugin {
     );
   }
 
-  override onunload(): void {}
+  override onunload(): void {
+    // registerEvent releases the vault listeners; the pending timer is ours to
+    // cancel, or a disabled or replaced plugin still writes (#201).
+    this.debouncedVaultChange.cancel();
+  }
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
