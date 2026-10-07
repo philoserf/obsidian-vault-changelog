@@ -17,7 +17,7 @@
     "format:check": "biome format .",
     "version": "bun run version-bump.ts",
     "test": "bun test",
-    "deploy": "bun run build && bun run deploy.ts"
+    "deploy": "bun run build && mkdir -p \"${OBSIDIAN_DEPLOY_DEST:?set it in .env.local}\" && cp main.js manifest.json styles.css \"$OBSIDIAN_DEPLOY_DEST\""
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
