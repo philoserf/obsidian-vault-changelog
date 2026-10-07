@@ -500,11 +500,23 @@ describe("loading settings by rule", () => {
     expect(settings.datetimeFormat).toBe("HH:mm");
   });
 
-  test("a persisted non-markdown changelogPath falls back on load (#213)", () => {
-    expect(
-      normalizeLoadedSettings({ changelogPath: "Notes" }, identity)
-        .changelogPath,
-    ).toBe(DEFAULT_SETTINGS.changelogPath);
+  test("a persisted invalid changelogPath is kept, never replaced by the default (#298)", () => {
+    // The default names a note, possibly the user's own. Loading an invalid
+    // path keeps it, and the write refuses it, rather than guessing.
+    for (const saved of ["Notes", "Logs/changes", "Changelog.txt"]) {
+      expect(
+        normalizeLoadedSettings({ changelogPath: saved }, identity)
+          .changelogPath,
+      ).toBe(saved);
+    }
+  });
+
+  test("a missing or blank changelogPath loads the default (#298)", () => {
+    for (const raw of [{}, { changelogPath: "" }, { changelogPath: "  " }]) {
+      expect(normalizeLoadedSettings(raw, identity).changelogPath).toBe(
+        DEFAULT_SETTINGS.changelogPath,
+      );
+    }
   });
 
   test("a persisted empty datetimeFormat falls back on load (#213)", () => {

@@ -9,6 +9,7 @@ import {
 
 import {
   type ChangelogSettings,
+  changelogPathError,
   DEFAULT_SETTINGS,
   normalizeLoadedSettings,
   renderChangelog,
@@ -20,6 +21,8 @@ export default class ChangelogPlugin extends Plugin {
   override settings: ChangelogSettings = DEFAULT_SETTINGS;
   private saveQueue: Promise<void> = Promise.resolve();
   private settingTab: ChangelogSettingsTab | undefined;
+  /** The last failure an automatic update reported, until one succeeds. */
+  private lastFailure: string | undefined;
   // resetTimer = true makes this a trailing-edge debounce: one update once
   // editing has been quiet for 200 ms. Left at its default of false it is a
   // throttle that fires repeatedly through a burst of autosaves (#193).
@@ -40,7 +43,7 @@ export default class ChangelogPlugin extends Plugin {
       id: "update-changelog",
       name: "Update changelog",
       callback: () => {
-        this.runUpdate();
+        this.runUpdate(true);
       },
     });
 
@@ -92,6 +95,13 @@ export default class ChangelogPlugin extends Plugin {
 
   async updateChangelog(): Promise<void> {
     const path = this.settings.changelogPath;
+    // The loader keeps an invalid saved path rather than guess another note
+    // to write (#298). This is where it is refused, with the reason.
+    if (changelogPathError(path) !== undefined) {
+      throw new Error(
+        `the changelog path ${path} is not a markdown note. Choose one ending in .md in settings`,
+      );
+    }
     const content = renderChangelog(
       this.app.vault.getMarkdownFiles(),
       this.settings,
@@ -141,14 +151,25 @@ export default class ChangelogPlugin extends Plugin {
    * the debounced vault handler. Every failure in the write path throws, so
    * the reason reaches the user and the developer console, not a fixed
    * message with the error discarded (#217).
+   *
+   * An automatic update does not repeat the Notice for a failure it has
+   * already shown. A failure that persists, such as an invalid path (#298),
+   * would otherwise pop up after every pause in typing. The command always
+   * reports, and a success clears the memory.
    */
-  private runUpdate(): void {
-    this.updateChangelog().catch((err: unknown) => {
-      console.error("Vault Changelog: update failed", err);
-      new Notice(
-        `Failed to update changelog: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
+  private runUpdate(manual = false): void {
+    this.updateChangelog().then(
+      () => {
+        this.lastFailure = undefined;
+      },
+      (err: unknown) => {
+        console.error("Vault Changelog: update failed", err);
+        const message = `Failed to update changelog: ${err instanceof Error ? err.message : String(err)}`;
+        if (!manual && message === this.lastFailure) return;
+        this.lastFailure = message;
+        new Notice(message);
+      },
+    );
   }
 
   async loadSettings(): Promise<void> {
