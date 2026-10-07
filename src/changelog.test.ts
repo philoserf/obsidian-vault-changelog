@@ -132,6 +132,25 @@ describe("renderChangelog", () => {
     ).toStartWith("# Changelog\n\n");
   });
 
+  test("trims the heading, and a blank heading is no heading (#310)", () => {
+    expect(
+      renderChangelog(
+        files,
+        settings({ changelogHeading: "  # Changelog \n" }),
+        formatter,
+        basename,
+      ),
+    ).toStartWith("# Changelog\n\n- ");
+    expect(
+      renderChangelog(
+        files,
+        settings({ changelogHeading: "   " }),
+        formatter,
+        basename,
+      ),
+    ).toStartWith("- ");
+  });
+
   test("renders an empty changelog", () => {
     expect(renderChangelog([], settings(), formatter, basename)).toBe("");
   });
@@ -319,12 +338,12 @@ describe("normalizeLoadedSettings", () => {
     ).toBe(500);
   });
 
-  test("trims the changelog heading", () => {
+  test("keeps the heading as persisted; render trims it (#310)", () => {
     const settings = normalizeLoadedSettings(
       { changelogHeading: "  # Changelog \n" },
       identity,
     );
-    expect(settings.changelogHeading).toBe("# Changelog");
+    expect(settings.changelogHeading).toBe("  # Changelog \n");
   });
 
   test("falls back to defaults when known keys have the wrong type", () => {
