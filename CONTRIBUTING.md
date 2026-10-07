@@ -87,6 +87,14 @@ dependencies needs a new beta and a full re-run. A change that touches only docs
       changelog's modified time does not change.
 - [ ] Type steadily in a note: the changelog is written once after typing stops.
 
+#### Errors
+
+- [ ] Point the changelog path into a folder that does not exist, then run the update: either the
+      changelog is created, or a Notice gives the reason, and the developer console logs the
+      error with its cause.
+- [ ] Point the changelog path at a folder named like a note (`Folder.md/`): the Notice says it
+      is a folder.
+
 #### Lifecycle
 
 - [ ] Disable the plugin within 200 ms of an edit: no write afterwards.
