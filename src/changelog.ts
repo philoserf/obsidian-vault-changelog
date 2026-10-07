@@ -59,6 +59,34 @@ export function changelogPathError(normalizedPath: string): string | undefined {
   return "Changelog path must end with .md";
 }
 
+/** What a vault event asks of the plugin. */
+export type VaultEventEffect = "ignore" | "refresh" | { follow: string };
+
+/**
+ * What a vault event on the file at `path` means for the changelog.
+ * `oldPath` is set for a rename only.
+ *
+ * - A rename away from the changelog path is the changelog moving, and the
+ *   setting follows it (#196). Only rename carries `oldPath`, so it is the
+ *   one event that can tell. The new path must still be a valid changelog
+ *   path, or the rename counts as any other event.
+ * - The changelog itself is ignored. Writing it is itself an event, so this
+ *   is what stops the plugin reacting to its own writes.
+ * - Only a markdown file can be a row, so only one can change the
+ *   changelog (#269).
+ */
+export function vaultEventEffect(
+  path: string,
+  oldPath: string | undefined,
+  changelogPath: string,
+): VaultEventEffect {
+  if (oldPath === changelogPath && changelogPathError(path) === undefined) {
+    return { follow: path };
+  }
+  if (path === changelogPath || !path.endsWith(".md")) return "ignore";
+  return "refresh";
+}
+
 /**
  * Rule for datetimeFormat: not blank. moment's format("") does not fail, it
  * falls through to ISO-8601, so an empty format would silently change every

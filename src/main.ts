@@ -9,10 +9,10 @@ import {
 
 import {
   type ChangelogSettings,
-  changelogPathError,
   DEFAULT_SETTINGS,
   normalizeLoadedSettings,
   renderChangelog,
+  vaultEventEffect,
 } from "./changelog";
 import { ChangelogSettingsTab } from "./settings";
 
@@ -44,49 +44,39 @@ export default class ChangelogPlugin extends Plugin {
       },
     });
 
-    // Only markdown files can appear in the changelog, so only they can
-    // change it (#269). The path test is the loop breaker: writing the
-    // changelog is itself a modify event.
-    const handler = (file: TAbstractFile) => {
-      if (
-        this.settings.autoUpdate &&
-        file instanceof TFile &&
-        file.extension === "md" &&
-        file.path !== this.settings.changelogPath
-      ) {
-        this.debouncedVaultChange();
+    // Which events matter is decided in changelog.ts (#313); this only acts
+    // on the answer. rename alone passes oldPath, which is how a moved
+    // changelog is told apart from any other rename (#196).
+    const handler = (file: TAbstractFile, oldPath?: string) => {
+      if (!(file instanceof TFile)) return;
+      const effect = vaultEventEffect(
+        file.path,
+        oldPath,
+        this.settings.changelogPath,
+      );
+      if (effect === "ignore") return;
+      if (effect === "refresh") {
+        if (this.settings.autoUpdate) this.debouncedVaultChange();
+        return;
       }
+      // The new path is assigned only once it is saved. An update already
+      // pending would run in that gap against the old path, so cancel it.
+      // updateSettings schedules a fresh one after the assignment when
+      // auto-update is on.
+      this.debouncedVaultChange.cancel();
+      void this.updateSettings({ changelogPath: effect.follow });
     };
-    this.registerEvent(this.app.vault.on("modify", handler));
-    this.registerEvent(this.app.vault.on("delete", handler));
+    this.registerEvent(this.app.vault.on("modify", (file) => handler(file)));
+    this.registerEvent(this.app.vault.on("delete", (file) => handler(file)));
     // A note can arrive already written, through Sync, a template or another
     // app, and never be modified afterwards (#291). Obsidian fires create for
     // every file while the vault loads, so listen only once the layout is
     // ready, or startup would run an update per file.
     this.app.workspace.onLayoutReady(() => {
-      this.registerEvent(this.app.vault.on("create", handler));
+      this.registerEvent(this.app.vault.on("create", (file) => handler(file)));
     });
-    // rename alone carries oldPath, the only value that can say the renamed
-    // file was the changelog. Without it the setting goes stale: the next
-    // update recreates a ghost at the old path and lists the moved
-    // changelog as an ordinary note (#196).
     this.registerEvent(
-      this.app.vault.on("rename", (file, oldPath) => {
-        if (
-          file instanceof TFile &&
-          oldPath === this.settings.changelogPath &&
-          changelogPathError(file.path) === undefined
-        ) {
-          // The new path is assigned only once it is saved. An update
-          // already pending would run in that gap against the old path, so
-          // cancel it. updateSettings schedules a fresh one after the
-          // assignment when auto-update is on.
-          this.debouncedVaultChange.cancel();
-          void this.updateSettings({ changelogPath: file.path });
-          return;
-        }
-        handler(file);
-      }),
+      this.app.vault.on("rename", (file, oldPath) => handler(file, oldPath)),
     );
   }
 
