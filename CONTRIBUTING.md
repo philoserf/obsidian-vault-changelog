@@ -61,6 +61,9 @@ does not try to protect a note the user points it at (#197).
 
 - [ ] Type quickly in the datetime format and heading fields, then reload: the last edit is on
       disk and in memory.
+- [ ] With auto-update on, type a heading at a normal pace: `data.json` and the changelog change
+      after typing pauses, not once per character, and the field never loses a typed space.
+- [ ] Type in the heading field and close settings at once: the last edit is saved.
 - [ ] Toggle a setting twice quickly: the final state is the one saved.
 - [ ] Make `data.json` read-only and edit two fields: nothing claims to be saved that is not.
 - [ ] Clear the datetime format field: an inline error shows, nothing is saved, and the preview

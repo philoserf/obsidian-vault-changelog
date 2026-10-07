@@ -1,5 +1,6 @@
 import {
   type App,
+  debounce,
   Notice,
   normalizePath,
   PluginSettingTab,
@@ -28,6 +29,10 @@ import type ChangelogPlugin from "./main";
  */
 const FOLDER_KEY = /^excludedFolders\.(\d+)$/;
 
+/** The declarative text controls, whose commits wait for a pause in typing. */
+type TextKey = "datetimeFormat" | "changelogHeading";
+const TEXT_KEYS = new Set<string>(["datetimeFormat", "changelogHeading"]);
+
 /**
  * Declarative settings (Obsidian 1.13). Each control's `validate` is the
  * field's rule from changelog.ts, so the tab and the loader cannot drift
@@ -41,6 +46,15 @@ export class ChangelogSettingsTab extends PluginSettingTab {
   private draftFolderRow = false;
   /** The excluded folders the rows were last drawn from. */
   private drawnFolders: string[] = [];
+  /**
+   * Text fields commit when typing pauses, not on every keystroke (#303).
+   * Each commit writes data.json and reads it back, and with auto-update on
+   * a pause renders the changelog, so per-keystroke commits wrote half-typed
+   * headings and formats into it. The field shows what the user types
+   * either way: Obsidian does not redraw it from the saved value mid-edit.
+   */
+  private pendingText: Partial<Pick<ChangelogSettings, TextKey>> = {};
+  private commitText = debounce(() => this.flushText(), 500, true);
   private datetimePreview: HTMLElement | undefined;
 
   constructor(app: App, plugin: ChangelogPlugin) {
@@ -219,7 +233,24 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       this.update();
       return;
     }
+    if (TEXT_KEYS.has(key)) {
+      this.pendingText[key as TextKey] = String(value);
+      this.commitText();
+      return;
+    }
     await this.plugin.updateSettings({ [key]: value });
+  }
+
+  // Closing the settings commits what was typed, without waiting.
+  override hide(): void {
+    this.commitText.run();
+    super.hide();
+  }
+
+  private flushText(): void {
+    const patch = this.pendingText;
+    this.pendingText = {};
+    if (Object.keys(patch).length > 0) void this.plugin.updateSettings(patch);
   }
 
   /**
