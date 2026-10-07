@@ -142,16 +142,23 @@ export class ChangelogSettingsTab extends PluginSettingTab {
             type: "folder" as const,
             key: `excludedFolders.${index}`,
             placeholder: "Folder/path",
-            validate: (value: string) =>
-              excludedFolderError(
-                normalizePath(value),
-                this.plugin.settings.excludedFolders.filter(
-                  (_, other) => other !== index,
-                ),
-                (folder) =>
-                  this.app.vault.getAbstractFileByPath(folder) instanceof
-                  TFolder,
-              ),
+            // The shared rule, then the tab's own: a folder the vault does
+            // not have would be a row that looks like a rule and excludes
+            // nothing (#205).
+            validate: (value: string) => {
+              const folder = normalizePath(value);
+              return (
+                excludedFolderError(
+                  folder,
+                  this.plugin.settings.excludedFolders.filter(
+                    (_, other) => other !== index,
+                  ),
+                ) ??
+                (this.app.vault.getAbstractFileByPath(folder) instanceof TFolder
+                  ? undefined
+                  : "No folder with this path")
+              );
+            },
           },
         })),
         onDelete: (index) => {

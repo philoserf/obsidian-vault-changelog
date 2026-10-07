@@ -69,39 +69,25 @@ export function datetimeFormatError(format: string): string | undefined {
   return "Enter a format";
 }
 
-export type ExcludedFolderVerdict = "ok" | "invalid" | "duplicate";
-
 /** Every spelling of the vault root that might survive normalization (#204). */
 const ROOT_MARKERS = new Set(["", ".", "./", "/"]);
 
 /**
- * Rule for one excluded folder, taken after normalizing: the vault root is
- * invalid, and an already-listed folder is a duplicate.
- */
-export function validateExcludedFolder(
-  normalizedFolder: string,
-  existing: string[],
-): ExcludedFolderVerdict {
-  if (ROOT_MARKERS.has(normalizedFolder)) return "invalid";
-  if (existing.includes(normalizedFolder)) return "duplicate";
-  return "ok";
-}
-
-/**
- * Tab rule for one excluded folder, taken after normalizing. `others` are the
- * folders already listed, not counting the one being edited. `exists` asks
- * the vault whether the folder is there: a folder the vault does not have
- * would be a row that looks like a rule and excludes nothing (#205).
+ * Rule for one excluded folder, taken after normalizing: not the vault root,
+ * and not one of `others`, the folders already listed. The tab adds a check
+ * of its own, that the folder exists (#205). The loader must not, because a
+ * folder missing on this device may still arrive through Sync.
  */
 export function excludedFolderError(
   normalizedFolder: string,
   others: string[],
-  exists: (folder: string) => boolean,
 ): string | undefined {
-  const verdict = validateExcludedFolder(normalizedFolder, others);
-  if (verdict === "invalid") return "Choose a folder, not the vault root";
-  if (verdict === "duplicate") return "This folder is already excluded";
-  if (!exists(normalizedFolder)) return "No folder with this path";
+  if (ROOT_MARKERS.has(normalizedFolder)) {
+    return "Choose a folder, not the vault root";
+  }
+  if (others.includes(normalizedFolder)) {
+    return "This folder is already excluded";
+  }
   return;
 }
 
@@ -121,7 +107,9 @@ function loadExcludedFolders(
   if (!value.every((entry) => typeof entry === "string")) return folders;
   for (const entry of value) {
     const folder = normalize(entry);
-    if (validateExcludedFolder(folder, folders) === "ok") folders.push(folder);
+    if (excludedFolderError(folder, folders) === undefined) {
+      folders.push(folder);
+    }
   }
   return folders;
 }
