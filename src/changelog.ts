@@ -20,87 +20,133 @@ export const DEFAULT_SETTINGS: ChangelogSettings = {
 
 export const MAX_RECENT_FILES = 500;
 
+// One rule per setting that has one. Settings arrive across two trust
+// boundaries, data.json at load and the settings tab at edit time, and both
+// call the same rule (#213). A rule comes in two forms sharing one
+// predicate: a coercion for load, which can only fall back to the default,
+// and an error message for the tab, which can refuse the edit and keep the
+// value the user already has.
+
+/** A count as typed or persisted: numbers and non-blank numeric strings. */
+function parseCount(value: unknown): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "string" && value.trim() !== "") return Number(value);
+  return Number.NaN;
+}
+
 /**
- * The one authoritative clamping rule for maxRecentFiles: floor to an
- * integer and clamp to [1, MAX_RECENT_FILES]; non-finite input falls back
- * to the default. Load-time and the settings UI both call this.
+ * Load coercion for maxRecentFiles: floor and clamp to [1, MAX_RECENT_FILES].
+ * Anything that is not a number or a numeric string falls back to the
+ * default. `Number()` alone would turn null, "", [] and false into 0, and
+ * then into a changelog one entry long (#209).
  */
 export function clampMaxRecentFiles(value: unknown): number {
-  const raw = Number(value);
+  const raw = parseCount(value);
   if (!Number.isFinite(raw)) return DEFAULT_SETTINGS.maxRecentFiles;
   return Math.max(1, Math.min(Math.floor(raw), MAX_RECENT_FILES));
 }
 
-/**
- * Turn persisted data into valid settings: drop unknown keys (so renamed
- * or removed settings don't linger), fall back to defaults for known keys
- * whose runtime type doesn't match (guards against hand-edited or corrupt
- * data.json), normalize folder paths so duplicate detection in the
- * settings UI stays consistent, clamp maxRecentFiles, and trim the
- * heading so generateChangelog's "\n\n" spacing stays predictable.
- * `normalize` is injected (Obsidian's normalizePath in production) to
- * keep this module Obsidian-free.
- */
-export function normalizeLoadedSettings(
-  raw: unknown,
-  normalize: (path: string) => string,
-): ChangelogSettings {
-  const loaded = (raw ?? {}) as Record<string, unknown>;
-  const knownKeys = new Set(Object.keys(DEFAULT_SETTINGS));
-  const filtered: Record<string, unknown> = {};
-  for (const key of Object.keys(loaded)) {
-    if (knownKeys.has(key)) {
-      filtered[key] = loaded[key];
-    }
-  }
-  const settings: ChangelogSettings = {
-    ...DEFAULT_SETTINGS,
-    ...(filtered as Partial<ChangelogSettings>),
-  };
-  for (const key of [
-    "changelogPath",
-    "changelogHeading",
-    "datetimeFormat",
-  ] as const) {
-    if (typeof settings[key] !== "string")
-      settings[key] = DEFAULT_SETTINGS[key];
-  }
-  for (const key of ["autoUpdate", "useWikiLinks"] as const) {
-    if (typeof settings[key] !== "boolean")
-      settings[key] = DEFAULT_SETTINGS[key];
-  }
-  if (
-    !Array.isArray(settings.excludedFolders) ||
-    !settings.excludedFolders.every((folder) => typeof folder === "string")
-  ) {
-    settings.excludedFolders = DEFAULT_SETTINGS.excludedFolders;
-  }
-  settings.changelogPath = normalize(settings.changelogPath);
-  settings.excludedFolders = settings.excludedFolders.map(normalize);
-  settings.maxRecentFiles = clampMaxRecentFiles(settings.maxRecentFiles);
-  settings.changelogHeading = settings.changelogHeading.trim();
-  return settings;
+/** Tab rule for maxRecentFiles: a whole number in [1, MAX_RECENT_FILES]. */
+export function maxRecentFilesError(value: unknown): string | undefined {
+  const raw = parseCount(value);
+  if (Number.isInteger(raw) && raw >= 1 && raw <= MAX_RECENT_FILES) return;
+  return `Enter a whole number from 1 to ${MAX_RECENT_FILES}`;
 }
 
-/** The changelog must be a markdown file; paths are validated post-normalize. */
-export function isValidChangelogPath(normalizedPath: string): boolean {
-  return normalizedPath.endsWith(".md");
+/** Rule for changelogPath, taken after normalizing: a markdown file. */
+export function changelogPathError(normalizedPath: string): string | undefined {
+  if (normalizedPath.endsWith(".md")) return;
+  return "Changelog path must end with .md";
+}
+
+/**
+ * Rule for datetimeFormat: not blank. moment's format("") does not fail, it
+ * falls through to ISO-8601, so an empty format would silently change every
+ * row instead of raising anything.
+ */
+export function datetimeFormatError(format: string): string | undefined {
+  if (format.trim() !== "") return;
+  return "Enter a format";
 }
 
 export type ExcludedFolderVerdict = "ok" | "invalid" | "duplicate";
 
+/** Every spelling of the vault root that might survive normalization (#204). */
+const ROOT_MARKERS = new Set(["", ".", "./", "/"]);
+
 /**
- * Validate a normalized folder path before adding it to excludedFolders:
- * empty input and the vault root are invalid; an already-listed folder is
- * a duplicate.
+ * Rule for one excluded folder, taken after normalizing: the vault root is
+ * invalid, and an already-listed folder is a duplicate.
  */
 export function validateExcludedFolder(
   normalizedFolder: string,
   existing: string[],
 ): ExcludedFolderVerdict {
-  if (!normalizedFolder || normalizedFolder === ".") return "invalid";
+  if (ROOT_MARKERS.has(normalizedFolder)) return "invalid";
   if (existing.includes(normalizedFolder)) return "duplicate";
   return "ok";
+}
+
+/**
+ * Load rule for excludedFolders. A list holding anything but strings is
+ * corrupt and falls back whole. Otherwise each entry is normalized and kept
+ * only if the Add button would have accepted it against the entries kept so
+ * far, which drops roots and collapses ["Archive/", "Archive"] to one row
+ * (#211). The result is always a fresh array, never the default's (#266).
+ */
+function loadExcludedFolders(
+  value: unknown,
+  normalize: (path: string) => string,
+): string[] {
+  const folders: string[] = [];
+  if (!Array.isArray(value)) return folders;
+  if (!value.every((entry) => typeof entry === "string")) return folders;
+  for (const entry of value) {
+    const folder = normalize(entry);
+    if (validateExcludedFolder(folder, folders) === "ok") folders.push(folder);
+  }
+  return folders;
+}
+
+/**
+ * Turn persisted data into valid settings, one rule per field. The result
+ * is built field by field, never spread from the data, so unknown, renamed
+ * and `__proto__` keys cannot reach it, and nothing in it is shared with
+ * DEFAULT_SETTINGS (#208). `normalize` is injected (Obsidian's
+ * normalizePath in production) to keep this module Obsidian-free.
+ */
+export function normalizeLoadedSettings(
+  raw: unknown,
+  normalize: (path: string) => string,
+): ChangelogSettings {
+  const loaded = (typeof raw === "object" && raw !== null ? raw : {}) as {
+    [K in keyof ChangelogSettings]?: unknown;
+  };
+  const str = (value: unknown): string =>
+    typeof value === "string" ? value : "";
+  const bool = (value: unknown, fallback: boolean): boolean =>
+    typeof value === "boolean" ? value : fallback;
+
+  const changelogPath = normalize(str(loaded.changelogPath));
+  const datetimeFormat = str(loaded.datetimeFormat);
+  return {
+    autoUpdate: bool(loaded.autoUpdate, DEFAULT_SETTINGS.autoUpdate),
+    changelogPath:
+      changelogPathError(changelogPath) === undefined
+        ? changelogPath
+        : DEFAULT_SETTINGS.changelogPath,
+    datetimeFormat:
+      datetimeFormatError(datetimeFormat) === undefined
+        ? datetimeFormat
+        : DEFAULT_SETTINGS.datetimeFormat,
+    maxRecentFiles: clampMaxRecentFiles(loaded.maxRecentFiles),
+    excludedFolders: loadExcludedFolders(loaded.excludedFolders, normalize),
+    useWikiLinks: bool(loaded.useWikiLinks, DEFAULT_SETTINGS.useWikiLinks),
+    changelogHeading: (typeof loaded.changelogHeading === "string"
+      ? loaded.changelogHeading
+      : DEFAULT_SETTINGS.changelogHeading
+    ).trim(),
+  };
 }
 
 interface ChangelogFile {

@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test";
 import moment from "moment";
 
 import {
+  changelogPathError,
   clampMaxRecentFiles,
   DEFAULT_SETTINGS,
+  datetimeFormatError,
   filterAndSort,
   generateChangelog,
-  isValidChangelogPath,
+  maxRecentFilesError,
   normalizeLoadedSettings,
   validateExcludedFolder,
 } from "./changelog";
@@ -261,14 +263,73 @@ describe("normalizeLoadedSettings", () => {
   });
 });
 
-describe("isValidChangelogPath", () => {
+describe("changelogPathError", () => {
   test("accepts a markdown path", () => {
-    expect(isValidChangelogPath("Notes/Changelog.md")).toBe(true);
+    expect(changelogPathError("Notes/Changelog.md")).toBeUndefined();
   });
 
   test("rejects non-markdown paths", () => {
-    expect(isValidChangelogPath("Changelog.txt")).toBe(false);
-    expect(isValidChangelogPath("Changelog")).toBe(false);
+    expect(changelogPathError("Changelog.txt")).toBeString();
+    expect(changelogPathError("Changelog")).toBeString();
+  });
+});
+
+describe("datetimeFormatError", () => {
+  test("accepts a format", () => {
+    expect(datetimeFormatError("YYYY-MM-DD")).toBeUndefined();
+  });
+
+  test("rejects an empty or blank format", () => {
+    expect(datetimeFormatError("")).toBeString();
+    expect(datetimeFormatError("   ")).toBeString();
+  });
+});
+
+describe("maxRecentFilesError", () => {
+  test("accepts whole numbers in range, typed or numeric", () => {
+    for (const ok of [1, 25, 500, "42"]) {
+      expect(maxRecentFilesError(ok)).toBeUndefined();
+    }
+  });
+
+  test("refuses what the load coercion would silently clamp or replace", () => {
+    for (const bad of [0, -5, 501, 2.5, "abc", "", null, Number.NaN]) {
+      expect(maxRecentFilesError(bad)).toBeString();
+    }
+  });
+});
+
+describe("loading settings by rule", () => {
+  const identity = (p: string) => p;
+
+  test("clampMaxRecentFiles falls back for every non-numeric value (#209)", () => {
+    for (const bad of [null, "", "  ", [], false, true, {}]) {
+      expect(clampMaxRecentFiles(bad)).toBe(DEFAULT_SETTINGS.maxRecentFiles);
+    }
+  });
+
+  test("non-object data loads as the defaults", () => {
+    for (const raw of ["junk", 42, true, []]) {
+      expect(normalizeLoadedSettings(raw, identity)).toEqual(DEFAULT_SETTINGS);
+    }
+  });
+
+  test("root entries are dropped from excludedFolders on load (#204)", () => {
+    expect(
+      normalizeLoadedSettings(
+        { excludedFolders: ["", ".", "Archive", "/", "./"] },
+        identity,
+      ).excludedFolders,
+    ).toEqual(["Archive"]);
+  });
+
+  test("a valid persisted path and format load unchanged", () => {
+    const settings = normalizeLoadedSettings(
+      { changelogPath: "Logs/Recent.md", datetimeFormat: "HH:mm" },
+      identity,
+    );
+    expect(settings.changelogPath).toBe("Logs/Recent.md");
+    expect(settings.datetimeFormat).toBe("HH:mm");
   });
 });
 
@@ -287,8 +348,8 @@ describe("validateExcludedFolder", () => {
   });
 });
 
-// Recorded 2.0.0 defects. Each `test.failing` passes while the defect is
-// present; the step that fixes it flips it to `test` (#263).
+// Defects recorded before 2.0.0 fixed them (#263): each was pinned as
+// test.failing first, then flipped by the step that fixed it.
 describe("2.0.0 baseline", () => {
   const identity = (p: string) => p;
   const stripTrailing = (p: string) => p.replace(/\/+$/, "");
@@ -306,30 +367,30 @@ describe("2.0.0 baseline", () => {
     ).not.toBe(DEFAULT_SETTINGS.excludedFolders);
   });
 
-  test.failing("a null maxRecentFiles falls back to the default (#209)", () => {
+  test("a null maxRecentFiles falls back to the default (#209)", () => {
     expect(clampMaxRecentFiles(null)).toBe(DEFAULT_SETTINGS.maxRecentFiles);
   });
 
-  test.failing("a persisted non-markdown changelogPath falls back on load (#213)", () => {
+  test("a persisted non-markdown changelogPath falls back on load (#213)", () => {
     expect(
       normalizeLoadedSettings({ changelogPath: "Notes" }, identity)
         .changelogPath,
     ).toBe(DEFAULT_SETTINGS.changelogPath);
   });
 
-  test.failing("a persisted empty datetimeFormat falls back on load (#213)", () => {
+  test("a persisted empty datetimeFormat falls back on load (#213)", () => {
     expect(
       normalizeLoadedSettings({ datetimeFormat: "" }, identity).datetimeFormat,
     ).toBe(DEFAULT_SETTINGS.datetimeFormat);
   });
 
-  test.failing("every spelling of the vault root is invalid (#204)", () => {
+  test("every spelling of the vault root is invalid (#204)", () => {
     for (const root of ["", ".", "./", "/"]) {
       expect(validateExcludedFolder(root, [])).toBe("invalid");
     }
   });
 
-  test.failing("excluded folders that normalize alike load as one (#211)", () => {
+  test("excluded folders that normalize alike load as one (#211)", () => {
     expect(
       normalizeLoadedSettings(
         { excludedFolders: ["Archive/", "Archive"] },
