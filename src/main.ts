@@ -18,6 +18,8 @@ import { ChangelogSettingsTab } from "./settings";
 
 export default class ChangelogPlugin extends Plugin {
   override settings: ChangelogSettings = DEFAULT_SETTINGS;
+  private saveQueue: Promise<void> = Promise.resolve();
+  private settingTab: ChangelogSettingsTab | undefined;
   // resetTimer = true makes this a trailing-edge debounce: one update once
   // editing has been quiet for 200 ms. Left at its default of false it is a
   // throttle that fires repeatedly through a burst of autosaves (#193).
@@ -31,11 +33,12 @@ export default class ChangelogPlugin extends Plugin {
 
   override async onload(): Promise<void> {
     await this.loadSettings();
-    this.addSettingTab(new ChangelogSettingsTab(this.app, this));
+    this.settingTab = new ChangelogSettingsTab(this.app, this);
+    this.addSettingTab(this.settingTab);
 
     this.addCommand({
       id: "update-changelog",
-      name: "Update Changelog",
+      name: "Update changelog",
       callback: () => {
         this.runUpdate();
       },
@@ -117,19 +120,62 @@ export default class ChangelogPlugin extends Plugin {
     );
   }
 
+  /**
+   * The one way a setting changes after load. The change is persisted first
+   * and assigned only once the write succeeds, so memory never holds a value
+   * disk does not (#206), and a failed write needs no rollback.
+   *
+   * Writes run one at a time, and each builds its next state from the last
+   * one persisted, inside the queue. The settings tab commits on every
+   * change, so edits overlap routinely. Built outside the queue, two
+   * overlapping edits would each start from the same old state and the
+   * later write would drop the earlier edit.
+   *
+   * A change is reported here, never thrown, and has no side effect except
+   * scheduling a changelog refresh when auto-update is on (#270). In
+   * particular it never re-registers vault listeners, which is the leak
+   * behind #97 and #124.
+   */
+  updateSettings(
+    change:
+      | Partial<ChangelogSettings>
+      | ((current: ChangelogSettings) => Partial<ChangelogSettings>),
+  ): Promise<void> {
+    const run = this.saveQueue.then(async () => {
+      const patch =
+        typeof change === "function" ? change(this.settings) : change;
+      const next = { ...this.settings, ...patch };
+      await this.saveData(next);
+      this.settings = next;
+      if (next.autoUpdate) this.debouncedVaultChange();
+    });
+    const reported = run.catch((err: unknown) => {
+      console.error("Vault Changelog: failed to save settings", err);
+      new Notice(
+        `Failed to save changelog settings: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+    this.saveQueue = reported;
+    return reported;
+  }
+
+  /**
+   * data.json changed on disk outside this instance: Obsidian Sync, git, or
+   * another device (#264). Reload it through the same loader as startup, and
+   * never save. A reload that writes makes data.json bounce between devices.
+   * Waiting for queued writes first keeps a write of our own from landing
+   * after, and over, the copy just read.
+   */
+  override async onExternalSettingsChange(): Promise<void> {
+    await this.saveQueue;
+    await this.loadSettings();
+    this.settingTab?.update();
+    if (this.settings.autoUpdate) this.debouncedVaultChange();
+  }
+
   override onunload(): void {
     // registerEvent releases the vault listeners; the pending timer is ours to
     // cancel, or a disabled or replaced plugin still writes (#201).
     this.debouncedVaultChange.cancel();
-  }
-
-  async saveSettings(): Promise<void> {
-    await this.saveData(this.settings);
-  }
-
-  saveSettingsSafely(): void {
-    this.saveSettings().catch(() => {
-      new Notice("Failed to save changelog settings");
-    });
   }
 }

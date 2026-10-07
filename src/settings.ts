@@ -1,247 +1,213 @@
 import {
-  AbstractInputSuggest,
   type App,
   Notice,
   normalizePath,
   PluginSettingTab,
-  Setting,
+  type SettingDefinitionItem,
+  TFolder,
 } from "obsidian";
 
 import {
+  type ChangelogSettings,
   changelogPathError,
-  clampMaxRecentFiles,
   DEFAULT_SETTINGS,
+  datetimeFormatError,
+  excludedFolderError,
   MAX_RECENT_FILES,
-  validateExcludedFolder,
+  maxRecentFilesError,
 } from "./changelog";
 import type ChangelogPlugin from "./main";
 
-class PathSuggest extends AbstractInputSuggest<string> {
-  inputEl: HTMLInputElement;
-  private cachedPaths: string[] | null = null;
+/** Control keys for list rows are `excludedFolders.<index>`. */
+const FOLDER_KEY = /^excludedFolders\.(\d+)$/;
 
-  constructor(app: App, inputEl: HTMLInputElement) {
-    super(app, inputEl);
-    this.inputEl = inputEl;
-  }
-
-  private getPaths(): string[] {
-    if (this.cachedPaths) return this.cachedPaths;
-
-    const paths: string[] = [];
-    for (const folder of this.app.vault.getAllFolders()) {
-      paths.push(`${folder.path}/`);
-    }
-    for (const file of this.app.vault.getFiles()) {
-      if (file.extension === "md") {
-        paths.push(file.path);
-      }
-    }
-    this.cachedPaths = paths;
-    return paths;
-  }
-
-  getSuggestions(inputStr: string): string[] {
-    const lowerInput = inputStr.toLowerCase();
-    return this.getPaths().filter((p) => p.toLowerCase().contains(lowerInput));
-  }
-
-  renderSuggestion(path: string, el: HTMLElement): void {
-    el.setText(path);
-  }
-
-  override selectSuggestion(path: string): void {
-    this.inputEl.value = path;
-    this.inputEl.trigger("input");
-    this.inputEl.dispatchEvent(new Event("blur"));
-    this.close();
-  }
-}
-
+/**
+ * Declarative settings (Obsidian 1.13). Each control's `validate` is the
+ * field's rule from changelog.ts, so the tab and the loader cannot drift
+ * apart (#213). A rejected value shows inline and is never saved. Every
+ * accepted change goes through the plugin's one commit path,
+ * `updateSettings`, which persists before it assigns (#206).
+ */
 export class ChangelogSettingsTab extends PluginSettingTab {
   plugin: ChangelogPlugin;
+  /** A new, still-empty excluded-folder row the user has asked for. */
+  private draftFolderRow = false;
+  private datetimePreview: HTMLElement | undefined;
 
   constructor(app: App, plugin: ChangelogPlugin) {
     super(app, plugin);
     this.plugin = plugin;
   }
 
-  renderExcludedFolders(container: HTMLElement): void {
-    container.empty();
+  override getSettingDefinitions(): SettingDefinitionItem[] {
+    const { settings } = this.plugin;
+    const folders = settings.excludedFolders;
+    const rows = this.draftFolderRow ? folders.length + 1 : folders.length;
 
-    if (this.plugin.settings.excludedFolders.length === 0) {
-      container.createDiv({ text: "No excluded folders" });
-      return;
-    }
-
-    this.plugin.settings.excludedFolders.forEach((folder) => {
-      const folderDiv = container.createDiv("excluded-folder-item");
-      folderDiv.createSpan({ text: folder });
-
-      const removeButton = folderDiv.createEl("button", {
-        text: "✕",
-        cls: "excluded-folder-remove",
-        attr: { "aria-label": "Remove excluded folder" },
-      });
-
-      removeButton.addEventListener("click", () => {
-        const index = this.plugin.settings.excludedFolders.indexOf(folder);
-        if (index > -1) {
-          this.plugin.settings.excludedFolders.splice(index, 1);
-          this.plugin.saveSettingsSafely();
-          this.renderExcludedFolders(container);
-        }
-      });
-    });
+    return [
+      {
+        name: "Auto update",
+        desc: "Automatically update changelog on vault changes",
+        control: { type: "toggle", key: "autoUpdate" },
+      },
+      {
+        name: "Changelog path",
+        desc: "Relative path including filename and extension",
+        // Not a declarative text control, which may commit on every
+        // keystroke. On the way to "Notes.md/Changelog.md" the path passes
+        // through "Notes.md", which is valid. With auto-update on, that
+        // would write a changelog there mid-typing. This row commits on
+        // blur. Not a file control either: that offers existing notes,
+        // which the next update would overwrite (#197).
+        render: (setting) => {
+          setting.addText((text) => {
+            text
+              .setPlaceholder("Folder/Changelog.md")
+              .setValue(this.plugin.settings.changelogPath);
+            text.inputEl.addEventListener("blur", () => {
+              const next = normalizePath(text.getValue());
+              const error = changelogPathError(next);
+              if (error) {
+                text.setValue(this.plugin.settings.changelogPath);
+                new Notice(error);
+                return;
+              }
+              if (next !== this.plugin.settings.changelogPath) {
+                void this.plugin.updateSettings({ changelogPath: next });
+              }
+            });
+          });
+        },
+      },
+      {
+        name: "Datetime format",
+        desc: createFragment((fragment) => {
+          fragment.appendText("Moment.js format string. ");
+          this.datetimePreview = fragment.createSpan();
+          this.showPreview(settings.datetimeFormat);
+        }),
+        control: {
+          type: "text",
+          key: "datetimeFormat",
+          placeholder: DEFAULT_SETTINGS.datetimeFormat,
+          // validate sees every candidate, including the empty ones it
+          // rejects, so it is where the preview follows the field (#199).
+          validate: (format) => {
+            this.showPreview(format);
+            return datetimeFormatError(format);
+          },
+        },
+      },
+      {
+        name: "Max recent files",
+        desc: `Maximum number of recently edited files to include (1–${MAX_RECENT_FILES})`,
+        // No defaultValue: an unparseable entry then arrives as 0 and is
+        // refused, instead of silently becoming the default (#210).
+        control: {
+          type: "number",
+          key: "maxRecentFiles",
+          min: 1,
+          max: MAX_RECENT_FILES,
+          step: 1,
+          validate: (value) => maxRecentFilesError(value),
+        },
+      },
+      {
+        name: "Use wiki-links",
+        desc: "Format filenames as wiki-links [[note]] instead of plain text",
+        control: { type: "toggle", key: "useWikiLinks" },
+      },
+      {
+        name: "Changelog heading",
+        desc: "Optional heading to prepend to the changelog, written literally (e.g., # Changelog). Leave empty for no heading.",
+        control: {
+          type: "text",
+          key: "changelogHeading",
+          placeholder: "# Changelog",
+        },
+      },
+      {
+        type: "list",
+        heading: "Excluded folders",
+        emptyState: "No excluded folders",
+        items: Array.from({ length: rows }, (_, index) => ({
+          name: folders[index] ?? "New excluded folder",
+          control: {
+            type: "folder" as const,
+            key: `excludedFolders.${index}`,
+            placeholder: "Folder/path",
+            validate: (value: string) =>
+              excludedFolderError(
+                normalizePath(value),
+                this.plugin.settings.excludedFolders.filter(
+                  (_, other) => other !== index,
+                ),
+                (folder) =>
+                  this.app.vault.getAbstractFileByPath(folder) instanceof
+                  TFolder,
+              ),
+          },
+        })),
+        onDelete: (index) => {
+          if (index >= this.plugin.settings.excludedFolders.length) {
+            this.draftFolderRow = false;
+            this.update();
+            return;
+          }
+          void this.plugin
+            .updateSettings((current) => ({
+              excludedFolders: current.excludedFolders.filter(
+                (_, other) => other !== index,
+              ),
+            }))
+            .then(() => this.update());
+        },
+        addItem: {
+          name: "Add excluded folder",
+          action: () => {
+            this.draftFolderRow = true;
+            this.update();
+          },
+        },
+      },
+    ];
   }
 
-  override display(): void {
-    const { containerEl } = this;
-    const { settings } = this.plugin;
+  override getControlValue(key: string): unknown {
+    const row = FOLDER_KEY.exec(key);
+    if (row) return this.plugin.settings.excludedFolders[Number(row[1])] ?? "";
+    return this.plugin.settings[key as keyof ChangelogSettings];
+  }
 
-    containerEl.empty();
-
-    new Setting(containerEl)
-      .setName("Auto update")
-      .setDesc("Automatically update changelog on vault changes")
-      .addToggle((toggle) =>
-        toggle.setValue(settings.autoUpdate).onChange((value) => {
-          settings.autoUpdate = value;
-          this.plugin.saveSettingsSafely();
-        }),
-      );
-
-    new Setting(containerEl)
-      .setName("Changelog path")
-      .setDesc("Relative path including filename and extension")
-      .addText((text) => {
-        text
-          .setPlaceholder("Folder/Changelog.md")
-          .setValue(settings.changelogPath);
-
-        text.inputEl.addEventListener("blur", () => {
-          const normalized = normalizePath(text.getValue());
-          const error = changelogPathError(normalized);
-          if (error) {
-            text.setValue(settings.changelogPath);
-            new Notice(error);
-            return;
-          }
-          settings.changelogPath = normalized;
-          this.plugin.saveSettingsSafely();
-        });
-
-        new PathSuggest(this.app, text.inputEl);
+  override async setControlValue(key: string, value: unknown): Promise<void> {
+    const row = FOLDER_KEY.exec(key);
+    if (row) {
+      const index = Number(row[1]);
+      const folder = normalizePath(String(value));
+      const savingDraft = index >= this.plugin.settings.excludedFolders.length;
+      await this.plugin.updateSettings((current) => {
+        const excludedFolders = [...current.excludedFolders];
+        excludedFolders[index] = folder;
+        return { excludedFolders };
       });
-
-    let datetimePreview: HTMLElement;
-
-    const datetimeSetting = new Setting(containerEl)
-      .setName("Datetime format")
-      .setDesc("Moment.js format string")
-      .addText((text) =>
-        text
-          .setPlaceholder("YYYY-MM-DD[T]HHmm")
-          .setValue(settings.datetimeFormat)
-          .onChange((format) => {
-            const nextFormat = format || DEFAULT_SETTINGS.datetimeFormat;
-            if (!format) {
-              text.setValue(nextFormat);
-            }
-            settings.datetimeFormat = nextFormat;
-            datetimePreview.textContent = `Preview: ${window.moment().format(nextFormat)}`;
-            this.plugin.saveSettingsSafely();
-          }),
-      );
-
-    datetimePreview = datetimeSetting.descEl.createDiv({
-      text: `Preview: ${window.moment().format(settings.datetimeFormat)}`,
-    });
-
-    new Setting(containerEl)
-      .setName("Max recent files")
-      .setDesc(
-        `Maximum number of recently edited files to include (1\u2013${MAX_RECENT_FILES})`,
-      )
-      .addText((text) => {
-        text.setValue(settings.maxRecentFiles.toString());
-
-        text.inputEl.addEventListener("blur", () => {
-          const numValue = Number(text.getValue());
-          if (Number.isNaN(numValue) || numValue < 1) {
-            text.setValue(settings.maxRecentFiles.toString());
-            new Notice(
-              `Max recent files must be between 1 and ${MAX_RECENT_FILES}`,
-            );
-            return;
-          }
-          const flooredValue = clampMaxRecentFiles(numValue);
-          settings.maxRecentFiles = flooredValue;
-          text.setValue(flooredValue.toString());
-          this.plugin.saveSettingsSafely();
-        });
+      if (savingDraft) this.draftFolderRow = false;
+      this.update();
+      return;
+    }
+    if (key === "changelogHeading") {
+      await this.plugin.updateSettings({
+        changelogHeading: String(value).trim(),
       });
+      return;
+    }
+    await this.plugin.updateSettings({ [key]: value });
+  }
 
-    new Setting(containerEl)
-      .setName("Use wiki-links")
-      .setDesc("Format filenames as wiki-links [[note]] instead of plain text")
-      .addToggle((toggle) =>
-        toggle.setValue(settings.useWikiLinks).onChange((value) => {
-          settings.useWikiLinks = value;
-          this.plugin.saveSettingsSafely();
-        }),
-      );
-
-    new Setting(containerEl)
-      .setName("Changelog heading")
-      .setDesc(
-        "Optional heading to prepend to the changelog, written literally (e.g., # Changelog). Leave empty for no heading.",
-      )
-      .addText((text) =>
-        text
-          .setPlaceholder("# Changelog")
-          .setValue(settings.changelogHeading)
-          .onChange((value) => {
-            settings.changelogHeading = value.trim();
-            this.plugin.saveSettingsSafely();
-          }),
-      );
-
-    new Setting(containerEl).setName("Excluded folders").setHeading();
-
-    const excludedFoldersList = containerEl.createDiv("excluded-folders-list");
-    this.renderExcludedFolders(excludedFoldersList);
-
-    let folderInputEl: HTMLInputElement;
-
-    new Setting(containerEl)
-      .setName("Add excluded folder")
-      .setDesc("Folders to exclude from the changelog")
-      .addText((text) => {
-        text.setPlaceholder("folder/path/");
-        folderInputEl = text.inputEl;
-        new PathSuggest(this.app, folderInputEl);
-      })
-      .addButton((button) => {
-        button.setButtonText("Add").onClick(() => {
-          const folder = normalizePath(folderInputEl.value);
-          const verdict = validateExcludedFolder(
-            folder,
-            settings.excludedFolders,
-          );
-          if (verdict === "invalid") {
-            new Notice(
-              "Excluded folder path cannot be empty or the vault root",
-            );
-            return;
-          }
-          if (verdict === "ok") {
-            settings.excludedFolders.push(folder);
-            this.plugin.saveSettingsSafely();
-            folderInputEl.value = "";
-            this.renderExcludedFolders(excludedFoldersList);
-          }
-        });
-      });
+  private showPreview(format: string): void {
+    if (!this.datetimePreview) return;
+    const shown = datetimeFormatError(format)
+      ? DEFAULT_SETTINGS.datetimeFormat
+      : format;
+    this.datetimePreview.setText(`Preview: ${window.moment().format(shown)}`);
   }
 }

@@ -88,6 +88,24 @@ export function validateExcludedFolder(
 }
 
 /**
+ * Tab rule for one excluded folder, taken after normalizing. `others` are the
+ * folders already listed, not counting the one being edited. `exists` asks
+ * the vault whether the folder is there: a folder the vault does not have
+ * would be a row that looks like a rule and excludes nothing (#205).
+ */
+export function excludedFolderError(
+  normalizedFolder: string,
+  others: string[],
+  exists: (folder: string) => boolean,
+): string | undefined {
+  const verdict = validateExcludedFolder(normalizedFolder, others);
+  if (verdict === "invalid") return "Choose a folder, not the vault root";
+  if (verdict === "duplicate") return "This folder is already excluded";
+  if (!exists(normalizedFolder)) return "No folder with this path";
+  return;
+}
+
+/**
  * Load rule for excludedFolders. A list holding anything but strings is
  * corrupt and falls back whole. Otherwise each entry is normalized and kept
  * only if the Add button would have accepted it against the entries kept so
