@@ -26,11 +26,15 @@ export default class ChangelogPlugin extends Plugin {
   private settingTab: ChangelogSettingsTab | undefined;
   /** The last failure an automatic update reported, until one succeeds. */
   private lastFailure: string | undefined;
+  /** When the burst of events the pending update is waiting out began. */
+  private burstStart: number | undefined;
   // resetTimer = true makes this a trailing-edge debounce: one update once
   // editing has been quiet for 200 ms. Left at its default of false it is a
   // throttle that fires repeatedly through a burst of autosaves (#193).
+  // Schedule through scheduleUpdate, which bounds the wait.
   private debouncedVaultChange = debounce(
     () => {
+      this.burstStart = undefined;
       this.runUpdate();
     },
     200,
@@ -62,7 +66,7 @@ export default class ChangelogPlugin extends Plugin {
       );
       if (effect === "ignore") return;
       if (effect === "refresh") {
-        if (this.settings.autoUpdate) this.debouncedVaultChange();
+        if (this.settings.autoUpdate) this.scheduleUpdate();
         return;
       }
       if ("cannotFollow" in effect) {
@@ -72,14 +76,14 @@ export default class ChangelogPlugin extends Plugin {
         new Notice(
           `The changelog was renamed to ${effect.cannotFollow}, which is not a markdown note, so it is now an ordinary file. Vault Changelog keeps writing to ${this.settings.changelogPath}.`,
         );
-        if (this.settings.autoUpdate) this.debouncedVaultChange();
+        if (this.settings.autoUpdate) this.scheduleUpdate();
         return;
       }
       // The new path is assigned only once it is saved. An update already
       // pending would run in that gap against the old path, so cancel it.
       // updateSettings schedules a fresh one after the assignment when
       // auto-update is on.
-      this.debouncedVaultChange.cancel();
+      this.cancelUpdate();
       void this.updateSettings({ changelogPath: effect.follow });
     };
     this.registerEvent(this.app.vault.on("modify", (file) => handler(file)));
@@ -151,6 +155,28 @@ export default class ChangelogPlugin extends Plugin {
     // cachedRead: a stale cache would skip a write that was needed.
     if ((await this.app.vault.read(file)) === content) return;
     await this.app.vault.modify(file, content);
+  }
+
+  /**
+   * Schedule an update for when events stop. A steady stream of events less
+   * than 200 ms apart, such as Sync downloading a vault or another plugin
+   * writing in a loop, would otherwise postpone it for as long as the stream
+   * lasts (#304). So a burst gets an update after two seconds at most, and
+   * the trailing update follows when it ends. Two seconds is well above the
+   * spacing of Obsidian's autosaves, so typing still gets one update after it
+   * stops.
+   */
+  private scheduleUpdate(): void {
+    const now = Date.now();
+    this.burstStart ??= now;
+    this.debouncedVaultChange();
+    if (now - this.burstStart >= 2000) this.debouncedVaultChange.run();
+  }
+
+  /** Drop a scheduled update, and the burst it was waiting out. */
+  private cancelUpdate(): void {
+    this.burstStart = undefined;
+    this.debouncedVaultChange.cancel();
   }
 
   /**
@@ -250,7 +276,7 @@ export default class ChangelogPlugin extends Plugin {
         throw new Error(`could not write ${dataPath}`);
       }
       this.settings = next;
-      if (next.autoUpdate) this.debouncedVaultChange();
+      if (next.autoUpdate) this.scheduleUpdate();
     }).catch((err: unknown) => {
       console.error("Vault Changelog: failed to save settings", err);
       new Notice(
@@ -271,7 +297,7 @@ export default class ChangelogPlugin extends Plugin {
     await this.enqueue(async () => {
       await this.loadSettings();
       this.settingTab?.update();
-      if (this.settings.autoUpdate) this.debouncedVaultChange();
+      if (this.settings.autoUpdate) this.scheduleUpdate();
     });
   }
 
@@ -280,6 +306,6 @@ export default class ChangelogPlugin extends Plugin {
     // queue are ours: cancel the one and stop the other, or a disabled or
     // replaced plugin still writes (#201, #301).
     this.unloaded = true;
-    this.debouncedVaultChange.cancel();
+    this.cancelUpdate();
   }
 }
