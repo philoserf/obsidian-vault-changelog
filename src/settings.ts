@@ -18,7 +18,6 @@ import {
   MAX_RECENT_FILES,
   maxRecentFilesError,
   withExcludedFolder,
-  withoutExcludedFolder,
 } from "./changelog";
 import type ChangelogPlugin from "./main";
 
@@ -28,10 +27,6 @@ import type ChangelogPlugin from "./main";
  * before any edit reaches the save queue (#295, #296).
  */
 const FOLDER_KEY = /^excludedFolders\.(\d+)$/;
-
-/** The declarative text controls, whose commits wait for a pause in typing. */
-type TextKey = "datetimeFormat" | "changelogHeading";
-const TEXT_KEYS = new Set<string>(["datetimeFormat", "changelogHeading"]);
 
 /**
  * Declarative settings (Obsidian 1.13). Each control's `validate` is the
@@ -53,8 +48,16 @@ export class ChangelogSettingsTab extends PluginSettingTab {
    * headings and formats into it. The field shows what the user types
    * either way: Obsidian does not redraw it from the saved value mid-edit.
    */
-  private pendingText: Partial<Pick<ChangelogSettings, TextKey>> = {};
-  private commitText = debounce(() => this.flushText(), 500, true);
+  private pendingText: Partial<ChangelogSettings> = {};
+  private commitText = debounce(
+    () => {
+      const patch = this.pendingText;
+      this.pendingText = {};
+      if (Object.keys(patch).length > 0) void this.plugin.updateSettings(patch);
+    },
+    500,
+    true,
+  );
   private datetimePreview: HTMLElement | undefined;
 
   constructor(app: App, plugin: ChangelogPlugin) {
@@ -184,6 +187,9 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           },
         })),
         onDelete: (index) => {
+          // The value this row was drawn with. The removal runs later,
+          // inside the save queue, against whatever the list holds by then,
+          // so it removes by value, never by position (#295).
           const folder = folders[index];
           if (folder === undefined) {
             this.draftFolderRow = false;
@@ -192,9 +198,8 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           }
           void this.plugin
             .updateSettings((current) => ({
-              excludedFolders: withoutExcludedFolder(
-                current.excludedFolders,
-                folder,
+              excludedFolders: current.excludedFolders.filter(
+                (other) => other !== folder,
               ),
             }))
             .then(() => this.update());
@@ -233,8 +238,9 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       this.update();
       return;
     }
-    if (TEXT_KEYS.has(key)) {
-      this.pendingText[key as TextKey] = String(value);
+    // The declarative text controls: their commits wait for a pause in typing.
+    if (key === "datetimeFormat" || key === "changelogHeading") {
+      this.pendingText[key] = String(value);
       this.commitText();
       return;
     }
@@ -245,12 +251,6 @@ export class ChangelogSettingsTab extends PluginSettingTab {
   override hide(): void {
     this.commitText.run();
     super.hide();
-  }
-
-  private flushText(): void {
-    const patch = this.pendingText;
-    this.pendingText = {};
-    if (Object.keys(patch).length > 0) void this.plugin.updateSettings(patch);
   }
 
   /**

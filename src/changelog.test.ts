@@ -15,7 +15,6 @@ import {
   type VaultEventEffect,
   vaultEventEffect,
   withExcludedFolder,
-  withoutExcludedFolder,
 } from "./changelog";
 
 const formatter = (mtime: number, fmt: string) => moment(mtime).format(fmt);
@@ -548,18 +547,7 @@ describe("excludedFolderError", () => {
 // The settings tab draws rows, and the edit reaches the list later, inside
 // the save queue, against whatever the list holds by then. So an edit names
 // the row by the value it showed, never by its position (#312).
-describe("excluded-folder list edits (#295, #296)", () => {
-  test("removing by value is right after an earlier removal", () => {
-    // Rows drawn as [A, B, C]. Delete A, then B before the tab redraws.
-    // By position the second delete would remove C (#295).
-    const afterFirst = withoutExcludedFolder(["A", "B", "C"], "A");
-    expect(withoutExcludedFolder(afterFirst, "B")).toEqual(["C"]);
-  });
-
-  test("removing a folder already gone changes nothing", () => {
-    expect(withoutExcludedFolder(["B", "C"], "A")).toEqual(["B", "C"]);
-  });
-
+describe("excluded-folder row edits (#296)", () => {
   test("a new row appends, even after the list got shorter", () => {
     // The draft row was drawn at index 3 of [A, B, C]. A delete of A is
     // saved first. By position the save would leave a hole (#296).
