@@ -45,10 +45,14 @@ export default class ChangelogPlugin extends Plugin {
       },
     });
 
+    // Only markdown files can appear in the changelog, so only they can
+    // change it (#269). The path test is the loop breaker: writing the
+    // changelog is itself a modify event.
     const handler = (file: TAbstractFile) => {
       if (
         this.settings.autoUpdate &&
         file instanceof TFile &&
+        file.extension === "md" &&
         file.path !== this.settings.changelogPath
       ) {
         this.debouncedVaultChange();
@@ -81,42 +85,26 @@ export default class ChangelogPlugin extends Plugin {
   }
 
   async updateChangelog(): Promise<void> {
+    const path = this.settings.changelogPath;
     const recentFiles = filterAndSort(
       this.app.vault.getMarkdownFiles(),
-      this.settings.changelogPath,
+      path,
       this.settings.excludedFolders,
       this.settings.maxRecentFiles,
     );
-    const changelog = generateChangelog(
+    const content = generateChangelog(
       recentFiles,
       this.settings.datetimeFormat,
       this.settings.useWikiLinks,
       this.settings.changelogHeading,
       (mtime, fmt) => window.moment(mtime).format(fmt),
     );
-    await this.writeToFile(this.settings.changelogPath, changelog);
-  }
 
-  /**
-   * The one place an update failure is reported, for both the command and
-   * the debounced vault handler. Every failure in the write path throws, so
-   * the reason reaches the user and the developer console, not a fixed
-   * message with the error discarded (#217).
-   */
-  private runUpdate(): void {
-    this.updateChangelog().catch((err: unknown) => {
-      console.error("Vault Changelog: update failed", err);
-      new Notice(
-        `Failed to update changelog: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
-  }
-
-  async writeToFile(path: string, content: string): Promise<void> {
     let file = this.app.vault.getAbstractFileByPath(path);
     if (!file) {
       try {
-        file = await this.app.vault.create(path, "");
+        await this.app.vault.create(path, content);
+        return;
       } catch (createErr) {
         // File may have been created by a concurrent event (TOCTOU race)
         file = this.app.vault.getAbstractFileByPath(path);
@@ -132,7 +120,28 @@ export default class ChangelogPlugin extends Plugin {
     if (!(file instanceof TFile)) {
       throw new Error(`${path} is a folder, not a note`);
     }
+    // An unchanged changelog is not rewritten (#269). Most vault events
+    // cannot change it: a note outside the list, an excluded folder, a second
+    // edit inside the format's resolution. Rewriting anyway bumps its mtime
+    // and, in a synced vault, uploads a revision for nothing. read, not
+    // cachedRead: a stale cache would skip a write that was needed.
+    if ((await this.app.vault.read(file)) === content) return;
     await this.app.vault.modify(file, content);
+  }
+
+  /**
+   * The one place an update failure is reported, for both the command and
+   * the debounced vault handler. Every failure in the write path throws, so
+   * the reason reaches the user and the developer console, not a fixed
+   * message with the error discarded (#217).
+   */
+  private runUpdate(): void {
+    this.updateChangelog().catch((err: unknown) => {
+      console.error("Vault Changelog: update failed", err);
+      new Notice(
+        `Failed to update changelog: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
   }
 
   async loadSettings(): Promise<void> {
