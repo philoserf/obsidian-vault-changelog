@@ -14,6 +14,8 @@ import {
   renderChangelog,
   type VaultEventEffect,
   vaultEventEffect,
+  withExcludedFolder,
+  withoutExcludedFolder,
 } from "./changelog";
 
 const formatter = (mtime: number, fmt: string) => moment(mtime).format(fmt);
@@ -540,6 +542,48 @@ describe("excludedFolderError", () => {
 
   test("refuses a folder already listed (#203)", () => {
     expect(excludedFolderError("Archive", ["Archive"])).toBeString();
+  });
+});
+
+// The settings tab draws rows, and the edit reaches the list later, inside
+// the save queue, against whatever the list holds by then. So an edit names
+// the row by the value it showed, never by its position (#312).
+describe("excluded-folder list edits (#295, #296)", () => {
+  test("removing by value is right after an earlier removal", () => {
+    // Rows drawn as [A, B, C]. Delete A, then B before the tab redraws.
+    // By position the second delete would remove C (#295).
+    const afterFirst = withoutExcludedFolder(["A", "B", "C"], "A");
+    expect(withoutExcludedFolder(afterFirst, "B")).toEqual(["C"]);
+  });
+
+  test("removing a folder already gone changes nothing", () => {
+    expect(withoutExcludedFolder(["B", "C"], "A")).toEqual(["B", "C"]);
+  });
+
+  test("a new row appends, even after the list got shorter", () => {
+    // The draft row was drawn at index 3 of [A, B, C]. A delete of A is
+    // saved first. By position the save would leave a hole (#296).
+    const result = withExcludedFolder(["B", "C"], undefined, "X");
+    expect(result).toEqual(["B", "C", "X"]);
+    expect(result.every((folder) => typeof folder === "string")).toBe(true);
+  });
+
+  test("an edited row replaces the value it showed, wherever it is now", () => {
+    expect(withExcludedFolder(["A", "B"], "B", "Z")).toEqual(["A", "Z"]);
+    expect(withExcludedFolder(["B"], "B", "Z")).toEqual(["Z"]);
+  });
+
+  test("an edited row whose value is gone appends the new value", () => {
+    expect(withExcludedFolder(["A"], "B", "Z")).toEqual(["A", "Z"]);
+  });
+
+  test("the rule is checked again against the list the edit lands on", () => {
+    // Two rows set to the same folder before either save lands (#296).
+    const first = withExcludedFolder([], undefined, "Archive");
+    expect(withExcludedFolder(first, undefined, "Archive")).toEqual([
+      "Archive",
+    ]);
+    expect(withExcludedFolder(["A"], undefined, "/")).toEqual(["A"]);
   });
 });
 
