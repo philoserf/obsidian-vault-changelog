@@ -46,13 +46,11 @@ jobs:
           subject-path: |
             main.js
             manifest.json
-            styles.css
 
       - name: Create release
         uses: softprops/action-gh-release@v3
         with:
           files: |
             main.js
-            styles.css
             manifest.json
           fail_on_unmatched_files: true
