@@ -59,6 +59,16 @@ export default class ChangelogPlugin extends Plugin {
         if (this.settings.autoUpdate) this.debouncedVaultChange();
         return;
       }
+      if ("cannotFollow" in effect) {
+        // The renamed file is now the user's, and is left alone. The setting
+        // keeps its path, and the next update writes a changelog there. Say
+        // so instead of letting a new file appear unexplained (#299).
+        new Notice(
+          `The changelog was renamed to ${effect.cannotFollow}, which is not a markdown note, so it is now an ordinary file. Vault Changelog keeps writing to ${this.settings.changelogPath}.`,
+        );
+        if (this.settings.autoUpdate) this.debouncedVaultChange();
+        return;
+      }
       // The new path is assigned only once it is saved. An update already
       // pending would run in that gap against the old path, so cancel it.
       // updateSettings schedules a fresh one after the assignment when

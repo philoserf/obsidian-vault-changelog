@@ -60,7 +60,11 @@ export function changelogPathError(normalizedPath: string): string | undefined {
 }
 
 /** What a vault event asks of the plugin. */
-export type VaultEventEffect = "ignore" | "refresh" | { follow: string };
+export type VaultEventEffect =
+  | "ignore"
+  | "refresh"
+  | { follow: string }
+  | { cannotFollow: string };
 
 /**
  * What a vault event on the file at `path` means for the changelog.
@@ -68,23 +72,28 @@ export type VaultEventEffect = "ignore" | "refresh" | { follow: string };
  *
  * - A rename away from the changelog path is the changelog moving, and the
  *   setting follows it (#196). Only rename carries `oldPath`, so it is the
- *   one event that can tell. The new path must still be a valid changelog
- *   path, or the rename counts as any other event.
+ *   one event that can tell. If the new path is not a valid changelog path,
+ *   the setting cannot follow, and the plugin must say so rather than
+ *   quietly write a new changelog at the old path (#299).
  * - The changelog itself is ignored. Writing it is itself an event, so this
  *   is what stops the plugin reacting to its own writes.
  * - Only a markdown file can be a row, so only one can change the
- *   changelog (#269).
+ *   changelog (#269). For a rename that is true of either name: a note
+ *   renamed away from markdown is a row leaving the list (#299).
  */
 export function vaultEventEffect(
   path: string,
   oldPath: string | undefined,
   changelogPath: string,
 ): VaultEventEffect {
-  if (oldPath === changelogPath && changelogPathError(path) === undefined) {
-    return { follow: path };
+  if (oldPath === changelogPath) {
+    return changelogPathError(path) === undefined
+      ? { follow: path }
+      : { cannotFollow: path };
   }
-  if (path === changelogPath || !path.endsWith(".md")) return "ignore";
-  return "refresh";
+  if (path === changelogPath) return "ignore";
+  if (path.endsWith(".md") || oldPath?.endsWith(".md")) return "refresh";
+  return "ignore";
 }
 
 /**
