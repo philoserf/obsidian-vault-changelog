@@ -95,6 +95,14 @@ export default class ChangelogPlugin extends Plugin {
     let file = this.app.vault.getAbstractFileByPath(path);
     if (!file) {
       try {
+        // vault.create does not make parent folders, so a path inside a
+        // missing folder would fail on every update (#287).
+        const folder = path.split("/").slice(0, -1).join("/");
+        if (folder && !this.app.vault.getAbstractFileByPath(folder)) {
+          await this.app.vault.createFolder(folder).catch(() => {
+            // A concurrent create made it first; create below still decides.
+          });
+        }
         await this.app.vault.create(path, content);
         return;
       } catch (createErr) {
