@@ -59,6 +59,13 @@ export default class ChangelogPlugin extends Plugin {
     };
     this.registerEvent(this.app.vault.on("modify", handler));
     this.registerEvent(this.app.vault.on("delete", handler));
+    // A note can arrive already written, through Sync, a template or another
+    // app, and never be modified afterwards (#291). Obsidian fires create for
+    // every file while the vault loads, so listen only once the layout is
+    // ready, or startup would run an update per file.
+    this.app.workspace.onLayoutReady(() => {
+      this.registerEvent(this.app.vault.on("create", handler));
+    });
     // rename alone carries oldPath, the only value that can say the renamed
     // file was the changelog. Without it the setting goes stale: the next
     // update recreates a ghost at the old path and lists the moved
