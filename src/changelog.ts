@@ -129,19 +129,6 @@ export function excludedFolderError(
 }
 
 /**
- * The excluded folders without `folder`. Rows are removed by the value they
- * showed, not their position: the tab draws a row, and the removal runs later
- * against whatever the list holds by then (#295). A folder already gone
- * leaves the list unchanged.
- */
-export function withoutExcludedFolder(
-  folders: string[],
-  folder: string,
-): string[] {
-  return folders.filter((other) => other !== folder);
-}
-
-/**
  * The excluded folders with `previous` replaced by `next`, or with `next`
  * appended when the row is new (`previous` undefined) or its value has gone
  * from the list. Like a removal, this runs against the list as it is by
@@ -260,30 +247,24 @@ export function filterAndSort<F extends ChangelogFile>(
     .slice(0, maxRecentFiles);
 }
 
-export type TimeFormatter = (mtime: number, format: string) => string;
-
-/**
- * The text a wiki-link should carry for a file. Injected like the time
- * formatter: production asks Obsidian, which gives the bare name when it is
- * unique in the vault and a path when it is not (#202).
- */
-export type LinkText<F extends ChangelogFile> = (file: F) => string;
-
 /**
  * The whole changelog for the vault's markdown files, as the settings
  * describe it. This is the one render entry point (#195): it chooses the
  * files and formats them, so no caller can format a list it forgot to
  * filter.
  *
- * Two notes may share a basename. With wiki-links, `linkText` tells them
- * apart. In plain text a row names its note by path when another row has
- * the same basename, and by basename otherwise (#202).
+ * Both callbacks are injected to keep this module Obsidian-free. Two notes
+ * may share a basename. With wiki-links, `linkText` tells them apart:
+ * production asks Obsidian, which gives the bare name when it is unique in
+ * the vault and a path when it is not. In plain text a row names its note by
+ * path when another row has the same basename, and by basename otherwise
+ * (#202).
  */
 export function renderChangelog<F extends ChangelogFile>(
   files: F[],
   settings: ChangelogSettings,
-  formatTime: TimeFormatter,
-  linkText: LinkText<F>,
+  formatTime: (mtime: number, format: string) => string,
+  linkText: (file: F) => string,
 ): string {
   const rows = filterAndSort(
     files,
