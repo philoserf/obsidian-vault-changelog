@@ -207,12 +207,6 @@ export class ChangelogSettingsTab extends PluginSettingTab {
       this.update();
       return;
     }
-    if (key === "changelogHeading") {
-      await this.plugin.updateSettings({
-        changelogHeading: String(value).trim(),
-      });
-      return;
-    }
     await this.plugin.updateSettings({ [key]: value });
   }
 

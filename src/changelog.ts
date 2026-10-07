@@ -148,10 +148,7 @@ export function normalizeLoadedSettings(
     maxRecentFiles: clampMaxRecentFiles(loaded.maxRecentFiles),
     excludedFolders: loadExcludedFolders(loaded.excludedFolders, normalize),
     useWikiLinks: bool(loaded.useWikiLinks, DEFAULT_SETTINGS.useWikiLinks),
-    changelogHeading: (typeof loaded.changelogHeading === "string"
-      ? loaded.changelogHeading
-      : DEFAULT_SETTINGS.changelogHeading
-    ).trim(),
+    changelogHeading: str(loaded.changelogHeading),
   };
 }
 
@@ -225,9 +222,11 @@ export function renderChangelog<F extends ChangelogFile>(
     seen.add(file.basename);
   }
 
-  let content = settings.changelogHeading
-    ? `${settings.changelogHeading}\n\n`
-    : "";
+  // The heading's one rule, applied where it is used: surrounding whitespace
+  // is dropped, so a blank heading is no heading (#310). The loader and the
+  // tab store what was typed.
+  const heading = settings.changelogHeading.trim();
+  let content = heading ? `${heading}\n\n` : "";
   for (const file of rows) {
     const time = formatTime(file.stat.mtime, settings.datetimeFormat);
     const name = settings.useWikiLinks
