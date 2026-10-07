@@ -19,6 +19,4 @@ const versions = await Bun.file("versions.json").json();
 versions[targetVersion] = minAppVersion;
 await Bun.write("versions.json", `${JSON.stringify(versions, null, 2)}\n`);
 
-console.log(`Updated to version ${targetVersion}`);
-
 export {};
