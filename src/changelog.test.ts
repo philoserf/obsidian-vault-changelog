@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import moment from "moment";
 
 import {
+  type ChangelogSettings,
   changelogPathError,
   clampMaxRecentFiles,
   DEFAULT_SETTINGS,
@@ -418,4 +419,67 @@ describe("excludedFolderError", () => {
     expect(excludedFolderError("archive", [], exists)).toBeString();
     expect(excludedFolderError("Nope", [], exists)).toBeString();
   });
+});
+
+// Real output from 1.8.0, captured in a vault on Obsidian 1.14.4 (#263): for
+// each scenario, every markdown file's path, name and mtime, the settings,
+// the time zone, and the changelog 1.8.0 wrote. Replaying the same input must
+// give the same bytes.
+interface Fixture {
+  name: string;
+  timeZone: string;
+  settings: ChangelogSettings;
+  files: { path: string; basename: string; mtime: number }[];
+  output: string;
+}
+const fixtures180: Fixture[] = await Bun.file(
+  new URL("./fixtures/1.8.0.json", import.meta.url),
+).json();
+
+describe("1.8.0 fixtures (#263)", () => {
+  const savedTimeZone = process.env.TZ;
+  afterAll(() => {
+    if (savedTimeZone === undefined) delete process.env.TZ;
+    else process.env.TZ = savedTimeZone;
+  });
+
+  test("cover every captured scenario", () => {
+    expect(fixtures180.map((f) => f.name)).toEqual([
+      "with-entries",
+      "no-eligible-notes",
+      "no-eligible-notes-with-heading",
+      "heading-set",
+      "heading-changed",
+      "wiki-links-off",
+      "colliding-basenames",
+      "colliding-basenames-plain",
+    ]);
+  });
+
+  for (const fixture of fixtures180) {
+    test(`renders what 1.8.0 wrote: ${fixture.name}`, () => {
+      process.env.TZ = fixture.timeZone;
+      const files = fixture.files.map((f) => ({
+        path: f.path,
+        basename: f.basename,
+        stat: { mtime: f.mtime },
+      }));
+      const { settings } = fixture;
+      const rows = filterAndSort(
+        files,
+        settings.changelogPath,
+        settings.excludedFolders,
+        settings.maxRecentFiles,
+      );
+      expect(
+        generateChangelog(
+          rows,
+          settings.datetimeFormat,
+          settings.useWikiLinks,
+          settings.changelogHeading,
+          formatter,
+        ),
+      ).toBe(fixture.output);
+    });
+  }
 });
