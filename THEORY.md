@@ -106,6 +106,13 @@ The same absence explains why two save methods exist. `saveSettings` wraps `save
 use the second. "Persist, and handle failure" is a real step with no home, so it grew beside the
 raw write instead of replacing it.
 
+Editing in place has a second edge. `excludedFolders` is the one setting held by reference, and
+the tab changes it with `push` and `splice`. The array the tab edits is a fresh one only because
+`normalizeLoadedSettings` ends by mapping the folders through `normalize`. Before that line, the
+shallow spread over `DEFAULT_SETTINGS` and the malformed-data fallback both hand back the
+default's own array. That line exists to normalize paths, and its copy is incidental, so
+removing it in a refactor would let the user's folders leak into `DEFAULT_SETTINGS`.
+
 ### The plugin destroys a file it cannot identify
 
 `changelogPath` is free text naming any note in the vault, and `writeToFile` replaces that note's
@@ -114,7 +121,9 @@ suffix — satisfied by every note there is. The path autocomplete offers existi
 completions for that very field.
 
 No predicate anywhere asks whether the file about to be overwritten is one this plugin wrote. A
-guard for this was attempted and withdrawn; see the finding below before reaching for it again.
+guard for this was attempted and withdrawn; read
+[#250](https://github.com/philoserf/obsidian-vault-changelog/issues/250) before reaching for it
+again.
 
 ## Seams
 
@@ -137,6 +146,21 @@ the same direction — the shell is doing less than it appears to:
 
 `onunload` is empty. `registerEvent` releases the listeners; an in-flight debounce is not its
 business, so one can still fire against a torn-down instance.
+
+The guard's `file.path !== changelogPath` test looks like a filter, but it is a loop breaker.
+`writeToFile` ends in `vault.modify`, which fires the same `modify` event the handler listens
+to. Without that comparison, every update would schedule the next one. `filterAndSort` excludes
+the changelog as well, but that only keeps the note out of its own list. It does nothing to stop
+the loop.
+
+**Sync, and `data.json` changing underneath a running plugin.** A vault is often shared between
+devices, and the plugin reads `data.json` exactly once, in `onload`. Nothing implements
+`onExternalSettingsChange`, so settings that a sync client changes on disk are invisible until a
+restart. Because `saveData` writes the whole settings object, the next edit in a stale settings tab
+overwrites the synced copy wholesale, not just the field that changed. The hook has existed
+since Obsidian 1.5.7, so every version the plugin supports has it (#264). The changelog note itself syncs too. A synced-in changelog arrives as a `modify`
+on `changelogPath` and hits the loop breaker above, so two devices with auto-update on do not
+ping-pong. Each device renders from its own view of the vault, and the last write wins.
 
 **The build.** `main.js` is committed because it is the artifact Obsidian loads. CI rebuilds and
 runs `git diff --exit-code main.js`, so a source or dependency change without a rebuild cannot
@@ -173,6 +197,42 @@ is worth preserving deliberately: re-registering vault listeners when `autoUpdat
 listener leak with closed issues already attached to it, and the current design avoids it by
 registering once in `onload` and reading `this.settings.autoUpdate` inside the guard.
 
+## What `main` is, and what is scheduled against it
+
+The code on `main` is older than its version number, and the history explains why.
+
+The thin spots above are not undiscovered. Releases 1.6.0 and 1.7.0 addressed most of them,
+including a single settings rule per field (`f71caab`, #235), a commit path with rollback
+(`2c265d8`, #233), a trailing-edge debounce cancelled on unload (`b058f19`, #225), and tracking
+the changelog through a rename (`3712722`, #221). One fix in that set was wrong: the ownership
+guard (`cbf7b0b`, #223) failed in both directions (#250). Both releases were withdrawn, and
+`5c2d02b` (#246) reverted the **whole** plugin source to 1.5.4, not just the guard. The good
+fixes and about three hundred lines of tests went with it. 1.8.0 ships that 1.5.4 source under
+a higher number, so that users stranded on 1.6.0 receive an update.
+
+The defects were reopened (#247), and the 2.0.0 milestone takes them and more. It is the last
+feature release before maintenance mode (#252) resumes. Its scope is every known bug, the final
+improvements, a move to current API usage, and very thorough testing. The current API includes
+declarative settings (#261), which raises `minAppVersion` to 1.13.0. The milestone redoes the
+reverted fixes from current code rather than restoring the old commits, in a fixed order written
+in its description. #263 comes first: fixtures taken from shipped versions, a failing test
+before each fix, and a checklist run against a beta in a real vault. That ordering is the lesson
+of #250. The guard passed its tests because they only round-tripped the current renderer's own
+output. Once 2.0.0 ships, the expectation is maintenance only, so a change that seems to need
+another feature release is a change to that plan, not just to the code.
+
+So, for whoever picks this up:
+
+- **The reverted commits are a worked reference, not a patch queue.** Read them for the
+  approach. Do not cherry-pick them. Take nothing from `cbf7b0b`, which introduced the guard,
+  or from `9ddb158`, which carries it forward.
+- **Outside users constrain every change.** This is a community-directory plugin.
+  `minAppVersion` is 1.6.6 on `main` and becomes 1.13.0 in 2.0.0. That is a deliberate,
+  one-time cut for declarative settings, and any API newer than the floor in force cuts users
+  off. `isDesktopOnly` is false, so it runs on iOS. Nothing in `src/` touches Node or Electron. The
+  `electron` external in the build scripts is inherited from the template, not a dependency.
+  Keep it that way.
+
 ## Uncertainties
 
 Where I am inferring from code alone, and where you should check rather than trust me.
@@ -186,12 +246,21 @@ settled here.
 document about the settings tab, the event wiring and the write path comes from reading, not from
 running.
 
-**Whether the thin spots above are accepted or simply unaddressed, I cannot tell you.** Nothing
-in the code records a judgement on them, and this document does not manufacture one. Read them as
-described, not as prioritised.
+**Whether two devices render the same changelog depends on whether a sync client preserves
+modification times.** I have not checked how any sync client handles `mtime`. If it does not,
+each device lists notes in a different order. The changelog then flips with whichever device
+wrote last, and every rewrite is itself a change that syncs.
 
-## Findings
+## Index
 
-| Finding                                                                                                                                                                                                                                                                             | Where                         | Status                                                                   |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------ |
-| The plugin destroys a file it cannot identify — see the third thin spot above. A guard was attempted and failed in both directions, accepting ordinary notes and refusing files the plugin had itself written; the failure modes are recorded so it is not reattempted the same way | `src/main.ts` — `writeToFile` | [#250](https://github.com/philoserf/obsidian-vault-changelog/issues/250) |
+| #   | Severity | Issue                                                                                                                                                                                                                                           | Primary location                               |
+| --- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| 1   | medium   | `WALKTHROUGH.md`'s build section quotes `build.ts`, which #254 deleted. The build now lives in `package.json`'s `build` and `dev` scripts. [#265](https://github.com/philoserf/obsidian-vault-changelog/issues/265)                             | `WALKTHROUGH.md` — "Build and release"         |
+| 2   | low      | The loader's final `.map` is the only thing keeping the settings tab from mutating `DEFAULT_SETTINGS.excludedFolders`, and no test pins it (see the second thin spot). [#266](https://github.com/philoserf/obsidian-vault-changelog/issues/266) | `src/changelog.ts` — `normalizeLoadedSettings` |
+
+**Total: 2 issues (0 critical, 0 high, 1 medium, 1 low)**
+
+**Related existing findings.** The thin spots and seams above are tracked in the 2.0.0
+milestone: settings rules (#213), the commit path (#206, #215), the debounce (#193), unload
+(#201), rename (#196), sync reload (#264), and ownership (#197). The failed attempt at ownership
+is recorded in [#250](https://github.com/philoserf/obsidian-vault-changelog/issues/250).

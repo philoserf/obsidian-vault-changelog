@@ -45,7 +45,7 @@ on the pure side, leaving the untested side thin enough to read in one sitting.
 
 <!-- prettier-ignore -->
 ```ts
-  async onload(): Promise<void> {
+  override async onload(): Promise<void> {
     await this.loadSettings();
     this.addSettingTab(new ChangelogSettingsTab(this.app, this));
 
@@ -76,6 +76,10 @@ on the pure side, leaving the untested side thin enough to read in one sitting.
 
 Settings load first, because the tab and every handler read them. Then the command, then three
 vault listeners.
+
+The `override` keyword is required. `tsconfig.json` sets `noImplicitOverride`, so every member
+that replaces one inherited from `Plugin` has to say so. A misspelled lifecycle hook, such as
+`onUnload`, is then a compile error, not a method Obsidian never calls.
 
 `handler` requires three things before it does anything: auto-update is on, the changed thing is
 a file rather than a folder, and it is not the changelog itself. That last test is what keeps the
@@ -109,7 +113,7 @@ Obsidian is handed to the pure module instead of reached for.
 <!-- prettier-ignore -->
 ```ts
 export default class ChangelogPlugin extends Plugin {
-  settings: ChangelogSettings = DEFAULT_SETTINGS;
+  override settings: ChangelogSettings = DEFAULT_SETTINGS;
   private debouncedVaultChange = debounce(() => {
     void this.updateChangelog().catch(() => {
       new Notice("Failed to update changelog");
@@ -127,7 +131,7 @@ work.
 
 <!-- prettier-ignore -->
 ```ts
-  onunload(): void {}
+  override onunload(): void {}
 ```
 
 Nothing to undo — `registerEvent` releases the three listeners on its own. The timer is the one
@@ -571,28 +575,25 @@ the core reads — `path`, `basename`, `stat.mtime` — so a real `TFile` satisf
 
 ## Build and release
 
-`build.ts` — `build`
+There is no build script file. The bundler is invoked straight from `package.json`.
+
+`package.json` — `scripts`
 
 <!-- prettier-ignore -->
-```ts
-async function build() {
-  const result = await Bun.build({
-    entrypoints: ["src/main.ts"],
-    outdir: ".",
-    format: "cjs",
-    external: ["obsidian", "electron"],
-    minify: !isWatch,
-    sourcemap: isWatch ? "linked" : "none",
-  });
-
-  console.log(
-    `Built main.js (${(result.outputs[0].size / 1024).toFixed(1)} KB)`,
-  );
-}
+```json
+    "dev": "bun build src/main.ts --outdir . --format cjs --external obsidian --external electron --sourcemap=linked --watch",
+    "build": "bun run check && bun build src/main.ts --outdir . --format cjs --external obsidian --external electron --minify",
+    "check": "bun run typecheck && biome check .",
 ```
 
-`obsidian` and `electron` are marked external and must never be bundled; Obsidian supplies both
-at runtime. Minification is on except in watch mode, where a linked sourcemap is more use.
+The two scripts differ only at the end. `build` runs `check` first, which is the typecheck plus
+Biome, so a production bundle is never produced from code that fails either one, and it minifies.
+`dev` skips the check, keeps the output readable with a linked sourcemap, and watches. It rebuilds
+only when a file the bundle imports changes, so editing a test does not trigger it.
+
+`obsidian` and `electron` are marked external and must never be bundled. Obsidian supplies
+`obsidian` at runtime. Nothing in `src/` imports `electron`, and the flag is inherited from the
+template.
 
 CI runs `bun run build` and then `git diff --exit-code main.js`. Because the committed bundle is
 what ships, any change to `src/` or to a dependency that is not followed by a rebuild fails the
@@ -605,17 +606,39 @@ identifier names are enough — trips the same check, and the fix is the same: r
 ```ts
 const manifest = await Bun.file("manifest.json").json();
 const { minAppVersion } = manifest;
+// JSON.stringify drops undefined values, so without this the versions.json
+// entry below would vanish silently and the script would still report success.
+if (typeof minAppVersion !== "string" || !minAppVersion) {
+  throw new Error("No minAppVersion found in manifest.json");
+}
 manifest.version = targetVersion;
 await Bun.write("manifest.json", `${JSON.stringify(manifest, null, 2)}\n`);
 ```
 
-`minAppVersion` is read _before_ the version field is overwritten, which is the subtle part.
+The script bumps `manifest.json` and then records `targetVersion → minAppVersion` in
+`versions.json`, the table Obsidian uses to pick a release compatible with an older app. The
+guard is there because that second write cannot fail on its own. Without a `minAppVersion`,
+`JSON.stringify` drops the new key, writes `versions.json` unchanged, and the script still
+prints success. It reads `targetVersion` from `npm_package_version`, so it only works through
+`bun run version` after `package.json` has been bumped.
 Releases go through the `release-gate` skill and then `release-ship`, which is user-invoked; tags
 are bare `X.Y.Z` and point at the merged commit of a `release/<version>` prep PR, and
 `release.yml` turns that tag into the GitHub release. Nobody pushes a tag by hand.
 
-## Findings
+## Index
 
-| Finding                                                                                                                                                                                                                                                                     | Where                                                            | Status                                                                   |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| The plugin overwrites the note at `changelogPath` with no check that it wrote it, and the path autocomplete offers existing notes as completions. A guard was attempted and failed in both directions; its failure modes are recorded so it is not reattempted the same way | `src/main.ts` — `writeToFile`, `src/settings.ts` — `PathSuggest` | [#250](https://github.com/philoserf/obsidian-vault-changelog/issues/250) |
+| #   | Severity | Issue                                                                                                                                                                                               | Primary location                                                 |
+| --- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 1   | medium   | The build section quoted `build.ts`, which #254 deleted. Rewritten around the `package.json` scripts. Corrected in place ([#265](https://github.com/philoserf/obsidian-vault-changelog/issues/265)) | "Build and release"                                              |
+| 2   | low      | Three quotes predated the `override` keywords added by #256. Re-quoted. Corrected in place                                                                                                          | `src/main.ts` — `ChangelogPlugin.onload`, `settings`, `onunload` |
+| 3   | low      | The `version-bump.ts` quote predated the `minAppVersion` guard added by #254, and its prose called the read order "the subtle part". Re-quoted and re-explained. Corrected in place                 | `version-bump.ts`                                                |
+
+**Total: 3 issues (0 critical, 0 high, 1 medium, 2 low)**
+
+**Related existing findings.** The defects this walkthrough describes along the way are tracked
+in the 2.0.0 milestone: rename (#196), the throttle (#193), unload (#201), the swallowed errors
+(#217), duplicate basenames (#202), the `clampMaxRecentFiles` coercion (#209), the datetime field
+(#199, #200), the max-recent-files pre-check (#210), the discarded `duplicate` verdict (#203),
+and the missing rollback on a failed save (#206). Overwriting a note the plugin did not write is
+#197. The failed guard for it is recorded in
+[#250](https://github.com/philoserf/obsidian-vault-changelog/issues/250).

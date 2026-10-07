@@ -30,7 +30,7 @@ bun test -t "pattern"    # run tests matching a name pattern
 
 The plugin splits pure logic from Obsidian integration, and that boundary is the one thing to protect.
 
-- `src/changelog.ts` — **pure functions**: `filterAndSort`, `generateChangelog`, `normalizeLoadedSettings`, `clampMaxRecentFiles`, `isValidChangelogPath`, `validateExcludedFolder`. The file has **no imports at all** — not Obsidian, not `moment`. All 30 tests target it. Obsidian is kept out by injection in exactly two places: a `TimeFormatter` callback (production closes over `window.moment`; tests pass the npm `moment` package, which is why it is a devDependency and never ships) and a path normalizer passed into `normalizeLoadedSettings`. `ChangelogFile` is a structural interface of the three fields the core reads — `path`, `basename`, `stat.mtime` — so a real `TFile` satisfies it and so does an object literal. Nothing is mocked anywhere.
+- `src/changelog.ts` — **pure functions**. The file has **no imports at all** — not Obsidian, not `moment`. Every test targets it. Obsidian is kept out by injection in exactly two places: a `TimeFormatter` callback (production closes over `window.moment`; tests pass the npm `moment` package, which is why it is a devDependency and never ships) and a path normalizer passed into `normalizeLoadedSettings`. `ChangelogFile` is a structural interface of the three fields the core reads — `path`, `basename`, `stat.mtime` — so a real `TFile` satisfies it and so does an object literal. Nothing is mocked anywhere.
 - `src/main.ts` — `ChangelogPlugin` extends `Plugin`. Wires the command, three vault handlers, and all I/O. **No tests, by construction.**
 - `src/settings.ts` — `ChangelogSettingsTab` + `PathSuggest`. `PathSuggest` offers folders **and every markdown file in the vault**, and serves both the changelog-path and excluded-folder fields; suggestions are cached per suggester instance to avoid per-keystroke scanning. **No tests, by construction.**
 
@@ -77,9 +77,8 @@ All three vault events — `modify`, `delete`, `rename` — share one handler, g
 
 ### Build system
 
-- The `build` and `dev` scripts call `bun build` directly (no build script file); entry `src/main.ts` → `./main.js` (CommonJS, minified in production).
 - `obsidian` and `electron` are marked external — never bundle them.
-- Watch mode (`bun run dev`) is `bun build --watch`: unminified, linked sourcemap, and it rebuilds only when a file the bundle imports changes, so test edits do not trigger it.
+- Watch mode (`bun run dev`) rebuilds only when a file the bundle imports changes, so test edits do not trigger it.
 - **`main.js` is committed** — Obsidian ships the committed bundle. CI runs `bun run build` then `git diff --exit-code main.js`, so any change to `src/` or to dependencies must be followed by a rebuild and a commit of `main.js` or the PR fails. Bun is deliberately unpinned in CI, so a bundler-output shift trips the same check — differing minified identifier names are enough — and the fix is the same: rebuild and commit.
 - `tsconfig.json` includes the tests, so `bun run typecheck` covers them. This matters because `ChangelogFile` is structural rather than nominal — a fixture drifting from the real shape is exactly the error only the compiler catches.
 
