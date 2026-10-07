@@ -9,9 +9,9 @@ import {
   datetimeFormatError,
   excludedFolderError,
   filterAndSort,
-  generateChangelog,
   maxRecentFilesError,
   normalizeLoadedSettings,
+  renderChangelog,
   validateExcludedFolder,
 } from "./changelog";
 
@@ -81,7 +81,7 @@ describe("filterAndSort", () => {
   });
 });
 
-describe("generateChangelog", () => {
+describe("renderChangelog", () => {
   const files = [
     {
       path: "Note B.md",
@@ -94,53 +94,157 @@ describe("generateChangelog", () => {
       stat: { mtime: new Date("2026-01-15T14:00:00").getTime() },
     },
   ];
+  const basename = (file: { basename: string }) => file.basename;
+  const settings = (overrides: Partial<ChangelogSettings> = {}) => ({
+    ...DEFAULT_SETTINGS,
+    excludedFolders: [],
+    ...overrides,
+  });
 
-  test("generates changelog without heading", () => {
-    const result = generateChangelog(
-      files,
-      "YYYY-MM-DD[T]HHmm",
-      true,
-      "",
-      formatter,
-    );
-    expect(result).toBe(
-      "- 2026-01-15T1430 \u00b7 [[Note B]]\n- 2026-01-15T1400 \u00b7 [[Note A]]\n",
+  test("renders with wiki-links and no heading", () => {
+    expect(renderChangelog(files, settings(), formatter, basename)).toBe(
+      "- 2026-01-15T1430 · [[Note B]]\n- 2026-01-15T1400 · [[Note A]]\n",
     );
   });
 
-  test("generates changelog without wiki-links", () => {
-    const result = generateChangelog(
-      files,
-      "YYYY-MM-DD[T]HHmm",
-      false,
-      "",
-      formatter,
-    );
-    expect(result).toBe(
-      "- 2026-01-15T1430 \u00b7 Note B\n- 2026-01-15T1400 \u00b7 Note A\n",
-    );
+  test("renders without wiki-links", () => {
+    expect(
+      renderChangelog(
+        files,
+        settings({ useWikiLinks: false }),
+        formatter,
+        basename,
+      ),
+    ).toBe("- 2026-01-15T1430 · Note B\n- 2026-01-15T1400 · Note A\n");
   });
 
-  test("generates changelog with heading", () => {
-    const result = generateChangelog(
-      files,
-      "YYYY-MM-DD[T]HHmm",
-      true,
-      "# Changelog",
-      formatter,
-    );
-    expect(result).toStartWith("# Changelog\n\n");
+  test("renders a heading", () => {
+    expect(
+      renderChangelog(
+        files,
+        settings({ changelogHeading: "# Changelog" }),
+        formatter,
+        basename,
+      ),
+    ).toStartWith("# Changelog\n\n");
   });
 
-  test("generates empty changelog", () => {
-    const result = generateChangelog(
-      [],
-      "YYYY-MM-DD[T]HHmm",
-      true,
-      "",
+  test("renders an empty changelog", () => {
+    expect(renderChangelog([], settings(), formatter, basename)).toBe("");
+  });
+
+  test("filters before it formats (#195)", () => {
+    const result = renderChangelog(
+      [
+        ...files,
+        { path: "Changelog.md", basename: "Changelog", stat: { mtime: 9e12 } },
+        { path: "Archive/Old.md", basename: "Old", stat: { mtime: 9e12 } },
+      ],
+      settings({ excludedFolders: ["Archive"], maxRecentFiles: 1 }),
       formatter,
+      basename,
     );
-    expect(result).toBe("");
+    expect(result).toBe("- 2026-01-15T1430 · [[Note B]]\n");
+  });
+
+  describe("notes that share a basename (#202)", () => {
+    const twins = [
+      {
+        path: "Projects/Meeting Notes.md",
+        basename: "Meeting Notes",
+        stat: { mtime: new Date("2026-01-15T14:30:00").getTime() },
+      },
+      {
+        path: "Archive/Meeting Notes.md",
+        basename: "Meeting Notes",
+        stat: { mtime: new Date("2026-01-15T14:00:00").getTime() },
+      },
+      {
+        path: "Solo.md",
+        basename: "Solo",
+        stat: { mtime: new Date("2026-01-15T13:00:00").getTime() },
+      },
+    ];
+
+    test("wiki-links carry whatever link text the vault resolves", () => {
+      const vaultLinkText = (file: { path: string; basename: string }) =>
+        file.basename === "Solo" ? "Solo" : file.path.replace(/\.md$/, "");
+      expect(renderChangelog(twins, settings(), formatter, vaultLinkText)).toBe(
+        "- 2026-01-15T1430 · [[Projects/Meeting Notes]]\n" +
+          "- 2026-01-15T1400 · [[Archive/Meeting Notes]]\n" +
+          "- 2026-01-15T1300 · [[Solo]]\n",
+      );
+    });
+
+    test("plain text names a repeated basename by path, and only that one", () => {
+      expect(
+        renderChangelog(
+          twins,
+          settings({ useWikiLinks: false }),
+          formatter,
+          basename,
+        ),
+      ).toBe(
+        "- 2026-01-15T1430 · Projects/Meeting Notes.md\n" +
+          "- 2026-01-15T1400 · Archive/Meeting Notes.md\n" +
+          "- 2026-01-15T1300 · Solo\n",
+      );
+    });
+  });
+
+  // 1.8.0's renderer, frozen verbatim. Wherever no two listed notes share a
+  // basename, 2.0.0 must render byte-for-byte what 1.8.0 did. The real-vault
+  // fixtures (#263) check the same promise against files 1.8.0 wrote.
+  function render180(
+    list: { basename: string; stat: { mtime: number } }[],
+    datetimeFormat: string,
+    useWikiLinks: boolean,
+    changelogHeading: string,
+    formatTime: (mtime: number, format: string) => string,
+  ): string {
+    let content = changelogHeading ? `${changelogHeading}\n\n` : "";
+    for (const file of list) {
+      const time = formatTime(file.stat.mtime, datetimeFormat);
+      const name = useWikiLinks ? `[[${file.basename}]]` : file.basename;
+      content += `- ${time} · ${name}\n`;
+    }
+    return content;
+  }
+
+  test("matches 1.8.0 byte for byte when no basenames repeat", () => {
+    const vault = Array.from({ length: 40 }, (_, i) => ({
+      path: `${i % 3 ? "Notes" : "Archive"}/Note ${i}.md`,
+      basename: `Note ${i}`,
+      stat: { mtime: Date.UTC(2026, 0, 1) + i * 37 * 60_000 },
+    }));
+    for (const useWikiLinks of [true, false]) {
+      for (const changelogHeading of ["", "# Changelog"]) {
+        for (const datetimeFormat of ["YYYY-MM-DD[T]HHmm", "HH:mm"]) {
+          const s = settings({
+            useWikiLinks,
+            changelogHeading,
+            datetimeFormat,
+            excludedFolders: ["Archive"],
+            maxRecentFiles: 10,
+          });
+          const listed = filterAndSort(
+            vault,
+            s.changelogPath,
+            s.excludedFolders,
+            s.maxRecentFiles,
+          );
+          expect(renderChangelog(vault, s, formatter, basename)).toBe(
+            render180(
+              listed,
+              datetimeFormat,
+              useWikiLinks,
+              changelogHeading,
+              formatter,
+            ),
+          );
+        }
+      }
+    }
   });
 });
 
@@ -457,29 +561,59 @@ describe("1.8.0 fixtures (#263)", () => {
   });
 
   for (const fixture of fixtures180) {
-    test(`renders what 1.8.0 wrote: ${fixture.name}`, () => {
+    test(`renders what 1.8.0 wrote, telling same-named notes apart: ${fixture.name}`, () => {
       process.env.TZ = fixture.timeZone;
       const files = fixture.files.map((f) => ({
         path: f.path,
         basename: f.basename,
         stat: { mtime: f.mtime },
       }));
-      const { settings } = fixture;
+      // What Obsidian's fileToLinktext gives: the bare name when it is unique
+      // in the vault, the path without its extension when it is not.
+      const count = (basename: string) =>
+        files.filter((f) => f.basename === basename).length;
+      const vaultLinkText = (file: { path: string; basename: string }) =>
+        count(file.basename) > 1
+          ? file.path.replace(/\.md$/, "")
+          : file.basename;
+
+      const rendered = renderChangelog(
+        files,
+        fixture.settings,
+        formatter,
+        vaultLinkText,
+      ).split("\n");
+      const shipped = fixture.output.split("\n");
+      expect(rendered).toHaveLength(shipped.length);
+
       const rows = filterAndSort(
         files,
-        settings.changelogPath,
-        settings.excludedFolders,
-        settings.maxRecentFiles,
+        fixture.settings.changelogPath,
+        fixture.settings.excludedFolders,
+        fixture.settings.maxRecentFiles,
       );
-      expect(
-        generateChangelog(
-          rows,
-          settings.datetimeFormat,
-          settings.useWikiLinks,
-          settings.changelogHeading,
-          formatter,
-        ),
-      ).toBe(fixture.output);
+      const repeated = (name: string) =>
+        rows.filter((f) => f.basename === name).length > 1;
+      const heading = fixture.settings.changelogHeading ? 2 : 0;
+      rendered.forEach((line, i) => {
+        const row = rows[i - heading];
+        // A row is ambiguous when its name alone does not identify its note.
+        // A wiki-link resolves against the whole vault, so a name shared with
+        // any note counts, listed or not. Plain text is read against the list,
+        // so only a name repeated among the rows counts (#202).
+        const ambiguous =
+          row !== undefined &&
+          (fixture.settings.useWikiLinks
+            ? count(row.basename) > 1
+            : repeated(row.basename));
+        if (ambiguous) {
+          // 1.8.0 wrote the bare name; 2.0.0 names the note.
+          expect(line).not.toBe(shipped[i] ?? "");
+          expect(line).toContain(row.path.replace(/\.md$/, ""));
+        } else {
+          expect(line).toBe(shipped[i] ?? "<missing line>");
+        }
+      });
     });
   }
 });

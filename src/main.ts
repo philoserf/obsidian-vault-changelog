@@ -11,9 +11,8 @@ import {
   type ChangelogSettings,
   changelogPathError,
   DEFAULT_SETTINGS,
-  filterAndSort,
-  generateChangelog,
   normalizeLoadedSettings,
+  renderChangelog,
 } from "./changelog";
 import { ChangelogSettingsTab } from "./settings";
 
@@ -86,18 +85,11 @@ export default class ChangelogPlugin extends Plugin {
 
   async updateChangelog(): Promise<void> {
     const path = this.settings.changelogPath;
-    const recentFiles = filterAndSort(
+    const content = renderChangelog(
       this.app.vault.getMarkdownFiles(),
-      path,
-      this.settings.excludedFolders,
-      this.settings.maxRecentFiles,
-    );
-    const content = generateChangelog(
-      recentFiles,
-      this.settings.datetimeFormat,
-      this.settings.useWikiLinks,
-      this.settings.changelogHeading,
+      this.settings,
       (mtime, fmt) => window.moment(mtime).format(fmt),
+      (file) => this.app.metadataCache.fileToLinktext(file, path),
     );
 
     let file = this.app.vault.getAbstractFileByPath(path);
