@@ -16,10 +16,16 @@ import {
   excludedFolderError,
   MAX_RECENT_FILES,
   maxRecentFilesError,
+  withExcludedFolder,
+  withoutExcludedFolder,
 } from "./changelog";
 import type ChangelogPlugin from "./main";
 
-/** Control keys for list rows are `excludedFolders.<index>`. */
+/**
+ * Control keys for list rows are `excludedFolders.<index>`, a position in
+ * the list as it was drawn. They are resolved to the value the row showed
+ * before any edit reaches the save queue (#295, #296).
+ */
 const FOLDER_KEY = /^excludedFolders\.(\d+)$/;
 
 /**
@@ -33,6 +39,8 @@ export class ChangelogSettingsTab extends PluginSettingTab {
   plugin: ChangelogPlugin;
   /** A new, still-empty excluded-folder row the user has asked for. */
   private draftFolderRow = false;
+  /** The excluded folders the rows were last drawn from. */
+  private drawnFolders: string[] = [];
   private datetimePreview: HTMLElement | undefined;
 
   constructor(app: App, plugin: ChangelogPlugin) {
@@ -43,6 +51,7 @@ export class ChangelogSettingsTab extends PluginSettingTab {
   override getSettingDefinitions(): SettingDefinitionItem[] {
     const { settings } = this.plugin;
     const folders = settings.excludedFolders;
+    this.drawnFolders = folders;
     const rows = this.draftFolderRow ? folders.length + 1 : folders.length;
 
     return [
@@ -144,15 +153,14 @@ export class ChangelogSettingsTab extends PluginSettingTab {
             placeholder: "Folder/path",
             // The shared rule, then the tab's own: a folder the vault does
             // not have would be a row that looks like a rule and excludes
-            // nothing (#205).
+            // nothing (#205). The save checks the shared rule again, against
+            // the list it lands on (#296).
             validate: (value: string) => {
               const folder = normalizePath(value);
               return (
                 excludedFolderError(
                   folder,
-                  this.plugin.settings.excludedFolders.filter(
-                    (_, other) => other !== index,
-                  ),
+                  folders.filter((_, other) => other !== index),
                 ) ??
                 (this.app.vault.getAbstractFileByPath(folder) instanceof TFolder
                   ? undefined
@@ -162,15 +170,17 @@ export class ChangelogSettingsTab extends PluginSettingTab {
           },
         })),
         onDelete: (index) => {
-          if (index >= this.plugin.settings.excludedFolders.length) {
+          const folder = folders[index];
+          if (folder === undefined) {
             this.draftFolderRow = false;
             this.update();
             return;
           }
           void this.plugin
             .updateSettings((current) => ({
-              excludedFolders: current.excludedFolders.filter(
-                (_, other) => other !== index,
+              excludedFolders: withoutExcludedFolder(
+                current.excludedFolders,
+                folder,
               ),
             }))
             .then(() => this.update());
@@ -188,22 +198,24 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 
   override getControlValue(key: string): unknown {
     const row = FOLDER_KEY.exec(key);
-    if (row) return this.plugin.settings.excludedFolders[Number(row[1])] ?? "";
+    if (row) return this.drawnFolders[Number(row[1])] ?? "";
     return this.plugin.settings[key as keyof ChangelogSettings];
   }
 
   override async setControlValue(key: string, value: unknown): Promise<void> {
     const row = FOLDER_KEY.exec(key);
     if (row) {
-      const index = Number(row[1]);
+      // undefined for the new row, which has no value yet.
+      const previous = this.drawnFolders[Number(row[1])];
       const folder = normalizePath(String(value));
-      const savingDraft = index >= this.plugin.settings.excludedFolders.length;
-      await this.plugin.updateSettings((current) => {
-        const excludedFolders = [...current.excludedFolders];
-        excludedFolders[index] = folder;
-        return { excludedFolders };
-      });
-      if (savingDraft) this.draftFolderRow = false;
+      await this.plugin.updateSettings((current) => ({
+        excludedFolders: withExcludedFolder(
+          current.excludedFolders,
+          previous,
+          folder,
+        ),
+      }));
+      if (previous === undefined) this.draftFolderRow = false;
       this.update();
       return;
     }
