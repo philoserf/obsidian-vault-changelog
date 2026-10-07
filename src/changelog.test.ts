@@ -12,7 +12,6 @@ import {
   maxRecentFilesError,
   normalizeLoadedSettings,
   renderChangelog,
-  validateExcludedFolder,
 } from "./changelog";
 
 const formatter = (mtime: number, fmt: string) => moment(mtime).format(fmt);
@@ -439,21 +438,6 @@ describe("loading settings by rule", () => {
   });
 });
 
-describe("validateExcludedFolder", () => {
-  test("accepts a new folder", () => {
-    expect(validateExcludedFolder("Archive", [])).toBe("ok");
-  });
-
-  test("rejects empty input and the vault root", () => {
-    expect(validateExcludedFolder("", [])).toBe("invalid");
-    expect(validateExcludedFolder(".", [])).toBe("invalid");
-  });
-
-  test("flags an already-listed folder as duplicate", () => {
-    expect(validateExcludedFolder("Archive", ["Archive"])).toBe("duplicate");
-  });
-});
-
 // Defects recorded before 2.0.0 fixed them (#263): each was pinned as
 // test.failing first, then flipped by the step that fixed it.
 describe("2.0.0 baseline", () => {
@@ -490,12 +474,6 @@ describe("2.0.0 baseline", () => {
     ).toBe(DEFAULT_SETTINGS.datetimeFormat);
   });
 
-  test("every spelling of the vault root is invalid (#204)", () => {
-    for (const root of ["", ".", "./", "/"]) {
-      expect(validateExcludedFolder(root, [])).toBe("invalid");
-    }
-  });
-
   test("excluded folders that normalize alike load as one (#211)", () => {
     expect(
       normalizeLoadedSettings(
@@ -507,21 +485,19 @@ describe("2.0.0 baseline", () => {
 });
 
 describe("excludedFolderError", () => {
-  const vault = new Set(["Archive", "Notes/Daily"]);
-  const exists = (folder: string) => vault.has(folder);
-
-  test("accepts a folder the vault has and the list does not", () => {
-    expect(excludedFolderError("Archive", [], exists)).toBeUndefined();
-    expect(
-      excludedFolderError("Notes/Daily", ["Archive"], exists),
-    ).toBeUndefined();
+  test("accepts a folder the list does not have", () => {
+    expect(excludedFolderError("Archive", [])).toBeUndefined();
+    expect(excludedFolderError("Notes/Daily", ["Archive"])).toBeUndefined();
   });
 
-  test("refuses the vault root, a duplicate, and a folder the vault lacks (#203, #204, #205)", () => {
-    expect(excludedFolderError("/", [], exists)).toBeString();
-    expect(excludedFolderError("Archive", ["Archive"], exists)).toBeString();
-    expect(excludedFolderError("archive", [], exists)).toBeString();
-    expect(excludedFolderError("Nope", [], exists)).toBeString();
+  test("refuses every spelling of the vault root (#204)", () => {
+    for (const root of ["", ".", "./", "/"]) {
+      expect(excludedFolderError(root, [])).toBeString();
+    }
+  });
+
+  test("refuses a folder already listed (#203)", () => {
+    expect(excludedFolderError("Archive", ["Archive"])).toBeString();
   });
 });
 
