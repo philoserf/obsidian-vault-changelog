@@ -169,6 +169,17 @@ export default class ChangelogPlugin extends Plugin {
         typeof change === "function" ? change(this.settings) : change;
       const next = { ...this.settings, ...patch };
       await this.saveData(next);
+      // saveData resolves even when the write fails: Obsidian's
+      // writePluginData swallows the error (seen with a read-only data.json
+      // on Obsidian 1.14.4). So read the file back, and treat the save as done
+      // only if disk holds what was written.
+      const dataPath = `${this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`}/data.json`;
+      const onDisk: unknown = JSON.parse(
+        await this.app.vault.adapter.read(dataPath),
+      );
+      if (JSON.stringify(onDisk) !== JSON.stringify(next)) {
+        throw new Error(`could not write ${dataPath}`);
+      }
       this.settings = next;
       if (next.autoUpdate) this.debouncedVaultChange();
     });
