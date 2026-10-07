@@ -12,6 +12,8 @@ import {
   maxRecentFilesError,
   normalizeLoadedSettings,
   renderChangelog,
+  type VaultEventEffect,
+  vaultEventEffect,
 } from "./changelog";
 
 const formatter = (mtime: number, fmt: string) => moment(mtime).format(fmt);
@@ -395,6 +397,40 @@ describe("normalizeLoadedSettings", () => {
       ).excludedFolders,
     ).toEqual(["Archive"]);
   });
+});
+
+describe("vaultEventEffect (#313)", () => {
+  const cases: [string, string, string | undefined, VaultEventEffect][] = [
+    ["a markdown note changes", "Notes/Idea.md", undefined, "refresh"],
+    ["a non-markdown file changes", "Assets/pic.png", undefined, "ignore"],
+    ["the changelog itself changes", "Changelog.md", undefined, "ignore"],
+    ["a note is renamed", "Notes/New.md", "Notes/Old.md", "refresh"],
+    [
+      "the changelog moves",
+      "Logs/Changelog.md",
+      "Changelog.md",
+      { follow: "Logs/Changelog.md" },
+    ],
+    // This row and the last pin today's behaviour, which #299 changes.
+    [
+      "the changelog is renamed to non-markdown",
+      "Changelog.txt",
+      "Changelog.md",
+      "ignore",
+    ],
+    [
+      "a note is renamed onto the changelog path",
+      "Changelog.md",
+      "Notes/Old.md",
+      "ignore",
+    ],
+    ["a note is renamed away from markdown", "Idea.txt", "Idea.md", "ignore"],
+  ];
+  for (const [when, path, oldPath, effect] of cases) {
+    test(when, () => {
+      expect(vaultEventEffect(path, oldPath, "Changelog.md")).toEqual(effect);
+    });
+  }
 });
 
 describe("changelogPathError", () => {
