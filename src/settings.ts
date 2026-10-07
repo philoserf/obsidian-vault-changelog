@@ -8,9 +8,9 @@ import {
 } from "obsidian";
 
 import {
+  changelogPathError,
   clampMaxRecentFiles,
   DEFAULT_SETTINGS,
-  isValidChangelogPath,
   MAX_RECENT_FILES,
   validateExcludedFolder,
 } from "./changelog";
@@ -121,9 +121,10 @@ export class ChangelogSettingsTab extends PluginSettingTab {
 
         text.inputEl.addEventListener("blur", () => {
           const normalized = normalizePath(text.getValue());
-          if (!isValidChangelogPath(normalized)) {
+          const error = changelogPathError(normalized);
+          if (error) {
             text.setValue(settings.changelogPath);
-            new Notice("Changelog path must end with .md");
+            new Notice(error);
             return;
           }
           settings.changelogPath = normalized;
