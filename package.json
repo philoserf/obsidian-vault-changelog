@@ -9,12 +9,12 @@
     "audit": "bun audit --audit-level=critical",
     "dev": "bun build src/main.ts --outdir . --format cjs --external obsidian --external electron --sourcemap=linked --watch",
     "build": "bun run check && bun build src/main.ts --outdir . --format cjs --external obsidian --external electron --minify",
-    "check": "bun run typecheck && biome check .",
+    "check": "bun run typecheck && biome check . && prettier --check \"**/*.md\"",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "format": "biome format --write .",
-    "format:check": "biome format .",
+    "format": "biome format --write . && prettier --write \"**/*.md\"",
+    "format:check": "biome format . && prettier --check \"**/*.md\"",
     "version": "bun run version-bump.ts",
     "test": "bun test",
     "deploy": "bun run build && mkdir -p \"${OBSIDIAN_DEPLOY_DEST:?set it in .env.local}\" && cp main.js manifest.json styles.css \"$OBSIDIAN_DEPLOY_DEST\""
@@ -25,6 +25,7 @@
     "@types/node": "^26.6.4",
     "moment": "^2.31.0",
     "obsidian": "^1.13.1",
+    "prettier": "^3.9.9",
     "typescript": "^7.0.2"
   }
 }

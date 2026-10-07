@@ -1,0 +1,3 @@
+# Ignored only through the global git excludes file, which prettier does not read.
+.issues/
+.worktrees/
