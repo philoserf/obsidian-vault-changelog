@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import moment from "moment";
+import { env, file } from "bun";
 
 import {
   type ChangelogSettings,
@@ -17,6 +17,11 @@ import {
   withExcludedFolder,
 } from "./changelog";
 
+// The npm package stands in for Obsidian's window.moment. It is a
+// devDependency and never ships. The community lint forbids a static import
+// of it, which would bundle a second copy into a plugin; tests are not
+// bundled, so it is loaded dynamically.
+const { default: moment } = await import("moment");
 const formatter = (mtime: number, fmt: string) => moment(mtime).format(fmt);
 // Path normalizers to inject into the loader: none, and the one behaviour of
 // Obsidian's normalizePath the tests rely on.
@@ -586,15 +591,15 @@ interface Fixture {
   files: { path: string; basename: string; mtime: number }[];
   output: string;
 }
-const fixtures180: Fixture[] = await Bun.file(
+const fixtures180 = (await file(
   new URL("./fixtures/1.8.0.json", import.meta.url),
-).json();
+).json()) as Fixture[];
 
 describe("1.8.0 fixtures (#263)", () => {
-  const savedTimeZone = process.env.TZ;
+  const savedTimeZone = env.TZ;
   afterAll(() => {
-    if (savedTimeZone === undefined) delete process.env.TZ;
-    else process.env.TZ = savedTimeZone;
+    if (savedTimeZone === undefined) delete env.TZ;
+    else env.TZ = savedTimeZone;
   });
 
   test("cover every captured scenario", () => {
@@ -612,7 +617,7 @@ describe("1.8.0 fixtures (#263)", () => {
 
   for (const fixture of fixtures180) {
     test(`renders what 1.8.0 wrote, telling same-named notes apart: ${fixture.name}`, () => {
-      process.env.TZ = fixture.timeZone;
+      env.TZ = fixture.timeZone;
       const files = fixture.files.map((f) => ({
         path: f.path,
         basename: f.basename,
