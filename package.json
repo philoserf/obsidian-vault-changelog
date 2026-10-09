@@ -24,7 +24,7 @@
     "@types/bun": "^1.4.2",
     "@types/node": "^26.6.4",
     "moment": "^2.31.0",
-    "obsidian": "^1.13.1",
+    "obsidian": "^1.14.4",
     "prettier": "^3.9.9",
     "typescript": "^7.0.2"
   }
