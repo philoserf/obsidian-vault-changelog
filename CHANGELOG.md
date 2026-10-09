@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.0.0
+
+**This release fixes what 1.8.0 listed as missing, without the file protection that 1.6.0 got wrong.** The note at "Changelog path" is still the plugin's to replace in full on every update, so point it at a note made for that purpose. **2.0.0 needs Obsidian 1.13 or later.** Older versions of Obsidian keep receiving 1.8.0.
+
+### Changed
+
+- **Auto-update waits for a pause.** The changelog is written once after edits stop, not repeatedly while you type. A steady stream of changes, such as a first Sync, still writes it about every two seconds.
+- **Renaming or moving the changelog note updates the setting**, so it no longer lists itself or reappears under the old name. If you rename it to something other than a markdown file, a notice says so and the plugin keeps writing to the configured path.
+- **Notes that share a filename get distinct rows**, each with enough of its path to tell them apart. Every other row is exactly what 1.8.0 wrote.
+- **Notes that arrive already written**, through Sync, a template or another app, now trigger an update, as does renaming a note away from markdown.
+- **The changelog is written only when its content changes**, so editing an image or an excluded note no longer rewrites it or uploads a Sync revision.
+- **Settings use Obsidian's built-in settings layout** and are searchable. Text settings save when typing pauses, and the changelog path saves when you leave the field.
+- **The changelog path no longer suggests existing notes**, because choosing one would overwrite it. Changing the path leaves the old changelog in place as an ordinary note, and a notice says so.
+- **The command is now named "Update changelog".** Hotkeys assigned to it keep working.
+- **`styles.css` is no longer part of a release.** It was empty.
+
+### Fixed
+
+- **Settings are applied only once they are saved to disk.** A failed save no longer leaves the plugin acting on a setting it will not have after a restart.
+- **Each setting follows one rule** whether you type it or it is loaded from `data.json`. An empty date format, a zero or non-numeric file count, the vault root or a folder that does not exist as an excluded folder, and duplicate excluded folders are all refused or corrected.
+- **A saved changelog path that is not a markdown file is kept, and the update stops with a notice** naming it, rather than quietly writing to a different note.
+- **Settings changed on another device are picked up** without a restart and without being saved back.
+- **A missing folder in the changelog path is created**, and when an update fails the notice says why.
+- **Disabling the plugin right after an edit no longer writes one more time.**
+
+### Upgrading
+
+**From 1.8.0 or 1.5.4:** your settings and your changelog carry over, and there is nothing to do. One saved value can now stop updates: a changelog path that does not end in `.md`. If that happens, a notice names the path. Fix it in settings.
+
+**From 1.6.0 or 1.7.0:** update to 2.0.0 directly. Neither release's file protection returns.
+
 ## 1.8.0
 
 **This release returns the plugin to the code that shipped as 1.5.4.** Versions 1.6.0 and 1.7.0 have been withdrawn — the file protection they introduced did not work — and 1.8.0 exists so that everyone, including anyone already running 1.6.0, ends up back on that known-good code. The version number is higher than 1.7.0 because that is the only way an update reaches you; the plugin's behaviour is 1.5.4's.

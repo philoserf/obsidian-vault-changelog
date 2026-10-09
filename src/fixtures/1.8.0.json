@@ -1,0 +1,442 @@
+[
+  {
+    "name": "with-entries",
+    "pluginVersion": "1.8.0",
+    "obsidian": "1.14.4",
+    "timeZone": "America/Detroit",
+    "settings": {
+      "autoUpdate": false,
+      "changelogPath": "Changelog.md",
+      "datetimeFormat": "YYYY-MM-DD[T]HHmm",
+      "maxRecentFiles": 25,
+      "excludedFolders": [
+        "Archive"
+      ],
+      "useWikiLinks": true,
+      "changelogHeading": ""
+    },
+    "files": [
+      {
+        "path": "Archive/Meeting Notes.md",
+        "basename": "Meeting Notes",
+        "mtime": 1791408300820
+      },
+      {
+        "path": "Archive/Old.md",
+        "basename": "Old",
+        "mtime": 1791408299683
+      },
+      {
+        "path": "Changelog.md",
+        "basename": "Changelog",
+        "mtime": 1791408310868
+      },
+      {
+        "path": "Notes/Alpha.md",
+        "basename": "Alpha",
+        "mtime": 1791408302871
+      },
+      {
+        "path": "Notes/Beta.md",
+        "basename": "Beta",
+        "mtime": 1791408306868
+      },
+      {
+        "path": "Projects/Meeting Notes.md",
+        "basename": "Meeting Notes",
+        "mtime": 1791408308814
+      },
+      {
+        "path": "Projects/Plan.md",
+        "basename": "Plan",
+        "mtime": 1791408304833
+      }
+    ],
+    "output": "- 2026-10-07T1725 · [[Meeting Notes]]\n- 2026-10-07T1725 · [[Beta]]\n- 2026-10-07T1725 · [[Plan]]\n- 2026-10-07T1725 · [[Alpha]]\n"
+  },
+  {
+    "name": "no-eligible-notes",
+    "pluginVersion": "1.8.0",
+    "obsidian": "1.14.4",
+    "timeZone": "America/Detroit",
+    "settings": {
+      "autoUpdate": false,
+      "changelogPath": "Changelog.md",
+      "datetimeFormat": "YYYY-MM-DD[T]HHmm",
+      "maxRecentFiles": 25,
+      "excludedFolders": [
+        "Notes",
+        "Projects",
+        "Archive"
+      ],
+      "useWikiLinks": true,
+      "changelogHeading": ""
+    },
+    "files": [
+      {
+        "path": "Archive/Meeting Notes.md",
+        "basename": "Meeting Notes",
+        "mtime": 1791408300820
+      },
+      {
+        "path": "Archive/Old.md",
+        "basename": "Old",
+        "mtime": 1791408299683
+      },
+      {
+        "path": "Changelog.md",
+        "basename": "Changelog",
+        "mtime": 1791408311851
+      },
+      {
+        "path": "Notes/Alpha.md",
+        "basename": "Alpha",
+        "mtime": 1791408302871
+      },
+      {
+        "path": "Notes/Beta.md",
+        "basename": "Beta",
+        "mtime": 1791408306868
+      },
+      {
+        "path": "Projects/Meeting Notes.md",
+        "basename": "Meeting Notes",
+        "mtime": 1791408308814
+      },
+      {
+        "path": "Projects/Plan.md",
+        "basename": "Plan",
+        "mtime": 1791408304833
+      }
+    ],
+    "output": ""
+  },
+  {
+    "name": "no-eligible-notes-with-heading",
+    "pluginVersion": "1.8.0",
+    "obsidian": "1.14.4",
+    "timeZone": "America/Detroit",
+    "settings": {
+      "autoUpdate": false,
+      "changelogPath": "Changelog.md",
+      "datetimeFormat": "YYYY-MM-DD[T]HHmm",
+      "maxRecentFiles": 25,
+      "excludedFolders": [
+        "Notes",
+        "Projects",
+        "Archive"
+      ],
+      "useWikiLinks": true,
+      "changelogHeading": "# Changelog"
+    },
+    "files": [
+      {
+        "path": "Archive/Meeting Notes.md",
+        "basename": "Meeting Notes",
+        "mtime": 1791408300820
+      },
+      {
+        "path": "Archive/Old.md",
+        "basename": "Old",
+        "mtime": 1791408299683
+      },
+      {
+        "path": "Changelog.md",
+        "basename": "Changelog",
+        "mtime": 1791408312771
+      },
+      {
+        "path": "Notes/Alpha.md",
+        "basename": "Alpha",
+        "mtime": 1791408302871
+      },
+      {
+        "path": "Notes/Beta.md",
+        "basename": "Beta",
+        "mtime": 1791408306868
+      },
+      {
+        "path": "Projects/Meeting Notes.md",
+        "basename": "Meeting Notes",
+        "mtime": 1791408308814
+      },
+      {
+        "path": "Projects/Plan.md",
+        "basename": "Plan",
+        "mtime": 1791408304833
+      }
+    ],
+    "output": "# Changelog\n\n"
+  },
+  {
+    "name": "heading-set",
+    "pluginVersion": "1.8.0",
+    "obsidian": "1.14.4",
+    "timeZone": "America/Detroit",
+    "settings": {
+      "autoUpdate": false,
+      "changelogPath": "Changelog.md",
+      "datetimeFormat": "YYYY-MM-DD[T]HHmm",
+      "maxRecentFiles": 25,
+      "excludedFolders": [
+        "Archive"
+      ],
+      "useWikiLinks": true,
+      "changelogHeading": "# Recent"
+    },
+    "files": [
+      {
+        "path": "Archive/Meeting Notes.md",
+        "basename": "Meeting Notes",
+        "mtime": 1791408300820
+      },
+      {
+        "path": "Archive/Old.md",
+        "basename": "Old",
+        "mtime": 1791408299683
+      },
+      {
+        "path": "Changelog.md",
+        "basename": "Changelog",
+        "mtime": 1791408313868
+      },
+      {
+        "path": "Notes/Alpha.md",
+        "basename": "Alpha",
+        "mtime": 1791408302871
+      },
+      {
+        "path": "Notes/Beta.md",
+        "basename": "Beta",
+        "mtime": 1791408306868
+      },
+      {
+        "path": "Projects/Meeting Notes.md",
+        "basename": "Meeting Notes",
+        "mtime": 1791408308814
+      },
+      {
+        "path": "Projects/Plan.md",
+        "basename": "Plan",
+        "mtime": 1791408304833
+      }
+    ],
+    "output": "# Recent\n\n- 2026-10-07T1725 · [[Meeting Notes]]\n- 2026-10-07T1725 · [[Beta]]\n- 2026-10-07T1725 · [[Plan]]\n- 2026-10-07T1725 · [[Alpha]]\n"
+  },
+  {
+    "name": "heading-changed",
+    "pluginVersion": "1.8.0",
+    "obsidian": "1.14.4",
+    "timeZone": "America/Detroit",
+    "settings": {
+      "autoUpdate": false,
+      "changelogPath": "Changelog.md",
+      "datetimeFormat": "YYYY-MM-DD[T]HHmm",
+      "maxRecentFiles": 25,
+      "excludedFolders": [
+        "Archive"
+      ],
+      "useWikiLinks": true,
+      "changelogHeading": "## Changed"
+    },
+    "files": [
+      {
+        "path": "Archive/Meeting Notes.md",
+        "basename": "Meeting Notes",
+        "mtime": 1791408300820
+      },
+      {
+        "path": "Archive/Old.md",
+        "basename": "Old",
+        "mtime": 1791408299683
+      },
+      {
+        "path": "Changelog.md",
+        "basename": "Changelog",
+        "mtime": 1791408314846
+      },
+      {
+        "path": "Notes/Alpha.md",
+        "basename": "Alpha",
+        "mtime": 1791408302871
+      },
+      {
+        "path": "Notes/Beta.md",
+        "basename": "Beta",
+        "mtime": 1791408306868
+      },
+      {
+        "path": "Projects/Meeting Notes.md",
+        "basename": "Meeting Notes",
+        "mtime": 1791408308814
+      },
+      {
+        "path": "Projects/Plan.md",
+        "basename": "Plan",
+        "mtime": 1791408304833
+      }
+    ],
+    "output": "## Changed\n\n- 2026-10-07T1725 · [[Meeting Notes]]\n- 2026-10-07T1725 · [[Beta]]\n- 2026-10-07T1725 · [[Plan]]\n- 2026-10-07T1725 · [[Alpha]]\n"
+  },
+  {
+    "name": "wiki-links-off",
+    "pluginVersion": "1.8.0",
+    "obsidian": "1.14.4",
+    "timeZone": "America/Detroit",
+    "settings": {
+      "autoUpdate": false,
+      "changelogPath": "Changelog.md",
+      "datetimeFormat": "YYYY-MM-DD[T]HHmm",
+      "maxRecentFiles": 25,
+      "excludedFolders": [
+        "Archive"
+      ],
+      "useWikiLinks": false,
+      "changelogHeading": ""
+    },
+    "files": [
+      {
+        "path": "Archive/Meeting Notes.md",
+        "basename": "Meeting Notes",
+        "mtime": 1791408300820
+      },
+      {
+        "path": "Archive/Old.md",
+        "basename": "Old",
+        "mtime": 1791408299683
+      },
+      {
+        "path": "Changelog.md",
+        "basename": "Changelog",
+        "mtime": 1791408315844
+      },
+      {
+        "path": "Notes/Alpha.md",
+        "basename": "Alpha",
+        "mtime": 1791408302871
+      },
+      {
+        "path": "Notes/Beta.md",
+        "basename": "Beta",
+        "mtime": 1791408306868
+      },
+      {
+        "path": "Projects/Meeting Notes.md",
+        "basename": "Meeting Notes",
+        "mtime": 1791408308814
+      },
+      {
+        "path": "Projects/Plan.md",
+        "basename": "Plan",
+        "mtime": 1791408304833
+      }
+    ],
+    "output": "- 2026-10-07T1725 · Meeting Notes\n- 2026-10-07T1725 · Beta\n- 2026-10-07T1725 · Plan\n- 2026-10-07T1725 · Alpha\n"
+  },
+  {
+    "name": "colliding-basenames",
+    "pluginVersion": "1.8.0",
+    "obsidian": "1.14.4",
+    "timeZone": "America/Detroit",
+    "settings": {
+      "autoUpdate": false,
+      "changelogPath": "Changelog.md",
+      "datetimeFormat": "YYYY-MM-DD[T]HHmm",
+      "maxRecentFiles": 25,
+      "excludedFolders": [],
+      "useWikiLinks": true,
+      "changelogHeading": ""
+    },
+    "files": [
+      {
+        "path": "Archive/Meeting Notes.md",
+        "basename": "Meeting Notes",
+        "mtime": 1791408300820
+      },
+      {
+        "path": "Archive/Old.md",
+        "basename": "Old",
+        "mtime": 1791408299683
+      },
+      {
+        "path": "Changelog.md",
+        "basename": "Changelog",
+        "mtime": 1791408316867
+      },
+      {
+        "path": "Notes/Alpha.md",
+        "basename": "Alpha",
+        "mtime": 1791408302871
+      },
+      {
+        "path": "Notes/Beta.md",
+        "basename": "Beta",
+        "mtime": 1791408306868
+      },
+      {
+        "path": "Projects/Meeting Notes.md",
+        "basename": "Meeting Notes",
+        "mtime": 1791408308814
+      },
+      {
+        "path": "Projects/Plan.md",
+        "basename": "Plan",
+        "mtime": 1791408304833
+      }
+    ],
+    "output": "- 2026-10-07T1725 · [[Meeting Notes]]\n- 2026-10-07T1725 · [[Beta]]\n- 2026-10-07T1725 · [[Plan]]\n- 2026-10-07T1725 · [[Alpha]]\n- 2026-10-07T1725 · [[Meeting Notes]]\n- 2026-10-07T1724 · [[Old]]\n"
+  },
+  {
+    "name": "colliding-basenames-plain",
+    "pluginVersion": "1.8.0",
+    "obsidian": "1.14.4",
+    "timeZone": "America/Detroit",
+    "settings": {
+      "autoUpdate": false,
+      "changelogPath": "Changelog.md",
+      "datetimeFormat": "YYYY-MM-DD[T]HHmm",
+      "maxRecentFiles": 25,
+      "excludedFolders": [],
+      "useWikiLinks": false,
+      "changelogHeading": ""
+    },
+    "files": [
+      {
+        "path": "Archive/Meeting Notes.md",
+        "basename": "Meeting Notes",
+        "mtime": 1791408300820
+      },
+      {
+        "path": "Archive/Old.md",
+        "basename": "Old",
+        "mtime": 1791408299683
+      },
+      {
+        "path": "Changelog.md",
+        "basename": "Changelog",
+        "mtime": 1791408317808
+      },
+      {
+        "path": "Notes/Alpha.md",
+        "basename": "Alpha",
+        "mtime": 1791408302871
+      },
+      {
+        "path": "Notes/Beta.md",
+        "basename": "Beta",
+        "mtime": 1791408306868
+      },
+      {
+        "path": "Projects/Meeting Notes.md",
+        "basename": "Meeting Notes",
+        "mtime": 1791408308814
+      },
+      {
+        "path": "Projects/Plan.md",
+        "basename": "Plan",
+        "mtime": 1791408304833
+      }
+    ],
+    "output": "- 2026-10-07T1725 · Meeting Notes\n- 2026-10-07T1725 · Beta\n- 2026-10-07T1725 · Plan\n- 2026-10-07T1725 · Alpha\n- 2026-10-07T1725 · Meeting Notes\n- 2026-10-07T1724 · Old\n"
+  }
+]
