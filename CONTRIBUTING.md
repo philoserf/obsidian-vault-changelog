@@ -27,8 +27,9 @@ A beta is a GitHub prerelease cut from the release branch by the **Beta** workfl
 written into `manifest.json` for that run only. Install the prerelease with BRAT in a scratch
 vault.
 
-A beta passes when **every** item below passes on that one beta. Any later change to `src/` or to
-dependencies needs a new beta and a full re-run. A change that touches only docs does not.
+A beta passes when **every** item below passes on that one beta. Any later change that alters the
+built `main.js`, or to dependencies, needs a new beta and a full re-run. A change that touches only
+docs or tests, and leaves `main.js` byte-identical, does not.
 
 ### Checklist
 

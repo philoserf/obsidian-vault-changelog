@@ -26,8 +26,8 @@ Obsidian had them open. Try these in order — the first two resolve it most of 
 2. **Disable the plugin first.** Settings → Community plugins → toggle Vault Changelog off,
    update, then toggle it back on.
 3. **Uninstall and reinstall.**
-4. **Install by hand with Obsidian closed.** Download `main.js`, `manifest.json` and
-   `styles.css` from the [latest release](https://github.com/philoserf/obsidian-vault-changelog/releases/latest)
+4. **Install by hand with Obsidian closed.** Download `main.js` and `manifest.json` from the
+   [latest release](https://github.com/philoserf/obsidian-vault-changelog/releases/latest)
    into `.obsidian/plugins/obsidian-vault-changelog/` in your vault.
 
 If none of that works, something is likely holding the files open. Real-time antivirus scanning,
@@ -43,8 +43,12 @@ separates a file that could not be written from one that could not be downloaded
 
 ## Usage
 
-- **Manual**: Command palette > `Vault Changelog: Update Changelog`
-- **Automatic**: Enable in settings; the changelog updates whenever a note is modified, renamed, or deleted.
+- **Manual**: Command palette > `Vault Changelog: Update changelog`
+- **Automatic**: Enable in settings; the changelog updates shortly after a note is created, modified, renamed, or deleted.
+
+Rename or move the changelog note and the setting follows it. Rename it to something other than a
+markdown file and the plugin says so, leaves that file alone, and keeps writing to the configured
+path.
 
 ## Example Output
 
@@ -54,6 +58,18 @@ separates a file that could not be written from one that could not be downloaded
 ```
 
 With wiki-links disabled, `[[Note Title]]` becomes `Note Title`. With a heading configured, the heading appears above the list.
+
+Notes that share a filename are told apart by their path: a wiki-link includes as much of the
+path as Obsidian needs, and with wiki-links disabled the row shows the full path.
+
+## What this plugin accesses
+
+- **Your notes' names, paths and modification times.** It never reads a note's content.
+- **The changelog note.** It reads it only to skip a write that would change nothing, and replaces
+  it in full otherwise. If the folder in the changelog path does not exist, it creates it.
+- **Its own settings**, in `data.json` in the plugin's folder.
+
+It makes no network requests and collects nothing.
 
 ## Settings
 
