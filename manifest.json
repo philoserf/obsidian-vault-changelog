@@ -1,7 +1,7 @@
 {
   "id": "obsidian-vault-changelog",
   "name": "Vault Changelog",
-  "version": "1.8.0",
+  "version": "2.0.0",
   "minAppVersion": "1.13.0",
   "description": "Maintain a changelog of recently edited notes.",
   "author": "Mark Ayers (originally by Badr Bouslikhin)",
