@@ -1,6 +1,6 @@
 # Theory of Vault Changelog
 
-This describes the 2.0.0 code. 2.0.0 keeps 1.8.0's output and replaces almost everything around it: how settings are validated and saved, how vault events are read, and when the changelog is written. The version fields change only in the release prep PR. The Beta workflow stamps a prerelease number into `manifest.json` for one run and commits nothing, so a checkout from before that PR still reads `1.8.0`.
+This describes the 2.0.0 code. 2.0.0 keeps 1.8.0's output and replaces almost everything around it: how settings are validated and saved, how vault events are read, and when the changelog is written. The version fields change only in the release prep PR, so a checkout from before that PR still reads `1.8.0`.
 
 ## What it is for
 
@@ -95,9 +95,9 @@ A newcomer who unifies these will reintroduce one of the two bugs.
 
 **Sync** is covered in design by the read-never-write reload and its place in the queue. It was checked by hand on beta 7.
 
-**The build and release boundary** is principled and enforced by CI, not by convention. Obsidian ships the committed `main.js`. CI, the Beta workflow and the release workflow all rebuild and run `git diff --exit-code main.js`. Bun is unpinned, so a bundler change alone can trip this, and the fix is always to rebuild and commit. A release ships `main.js` and `manifest.json` and nothing else. `styles.css` is gone (#311): the settings tab is declarative and needs no CSS. A user upgrading from 1.8.0 may keep 1.8.0's `styles.css` in the plugin folder; if so, its selectors match nothing 2.0.0 draws.
+**The build and release boundary** is principled and enforced by CI, not by convention. Obsidian ships the committed `main.js`. CI and the release workflow both rebuild and run `git diff --exit-code main.js`. Bun is unpinned, so a bundler change alone can trip this, and the fix is always to rebuild and commit. A release ships `main.js` and `manifest.json` and nothing else. `styles.css` is gone (#311): the settings tab is declarative and needs no CSS. A user upgrading from 1.8.0 may keep 1.8.0's `styles.css` in the plugin folder; if so, its selectors match nothing 2.0.0 draws.
 
-**Tests stop at `changelog.ts`.** Everything in `main.ts` and `settings.ts` is verified by hand, on a beta, in a real vault. That pass is effectively the test suite for event handling, saving and the tab, and a change under `src/` invalidates every previous beta. Moving decisions into the core (#313, #312) shrank what only that pass can prove, which is the direction to keep going.
+**Tests stop at `changelog.ts`.** Everything in `main.ts` and `settings.ts` is verified by hand, in a real vault. That pass is effectively the test suite for event handling, saving and the tab. Moving decisions into the core (#313, #312) shrank what only that pass can prove, which is the direction to keep going.
 
 ## What it is shaped to accommodate
 
