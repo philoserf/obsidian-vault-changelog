@@ -1,6 +1,7 @@
 # Vault Changelog
 
 ![Status: Maintenance](https://img.shields.io/badge/Status-Maintenance-blue.svg)
+[![Obsidian community plugin](https://img.shields.io/badge/Obsidian-Community_plugin-7C3AED?logo=obsidian&logoColor=white)](https://community.obsidian.md/plugins/obsidian-vault-changelog)
 
 Maintain a changelog of recently edited notes in [Obsidian](https://obsidian.md/).
 
