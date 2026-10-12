@@ -29,7 +29,7 @@ src/fixtures/1.8.0.json  changelogs 1.8.0 actually wrote, replayed by the tests
 version-bump.ts          copies package.json's version into manifest.json and versions.json
 ```
 
-Data flows in one direction through the pure module. `main.ts` hands it raw `data.json` and gets back settings. It hands it each vault event and gets back what that event means. It hands it the vault's markdown files and gets back the changelog text. It does the I/O itself. `settings.ts` calls the same rules from `changelog.ts` as validators and sends every accepted edit back through `main.ts`. The tests import only `changelog.ts`. `main.ts` and `settings.ts` cannot run outside Obsidian, so they are checked by hand, on a beta, in a real vault.
+Data flows in one direction through the pure module. `main.ts` hands it raw `data.json` and gets back settings. It hands it each vault event and gets back what that event means. It hands it the vault's markdown files and gets back the changelog text. It does the I/O itself. `settings.ts` calls the same rules from `changelog.ts` as validators and sends every accepted edit back through `main.ts`. The tests import only `changelog.ts`. `main.ts` and `settings.ts` cannot run outside Obsidian, so they are checked by hand, in a real vault.
 
 ## 1. Loading
 
@@ -634,8 +634,8 @@ The reload is queued like a write. It runs after any saves already queued, and a
 
 ## 9. Build, tests and release
 
-`bun run build` runs `check` — the type check, Biome, and the Prettier check over every markdown file — then bundles `src/main.ts` into `main.js` with `obsidian` and `electron` marked external. `main.js` is committed because Obsidian ships the committed file. CI, the beta workflow and the release workflow all rebuild and fail on `git diff --exit-code main.js`, then run `bun test`.
+`bun run build` runs `check` — the type check, Biome, and the Prettier check over every markdown file — then bundles `src/main.ts` into `main.js` with `obsidian` and `electron` marked external. `main.js` is committed because Obsidian ships the committed file. CI and the release workflow both rebuild and fail on `git diff --exit-code main.js`, then run `bun test`.
 
 The tests run under Bun and take `env` and `file` from the `bun` module. They load the npm `moment` package, a devDependency standing in for Obsidian's `window.moment`, with a dynamic `import()`. The community lint forbids a static import of it, which in shipped code would bundle a second copy of moment into the plugin. The tests are never bundled, so the dynamic import costs nothing. `version-bump.ts`, run by `bun run version` after `package.json` is bumped, also uses Bun's `file` and `write`. It copies the version into `manifest.json` and adds a `versions.json` row, and it refuses to run if `manifest.json` has no `minAppVersion`.
 
-A release is a bare-semver tag. `release.yml` checks it against `package.json`, `manifest.json` and `versions.json`, then publishes `main.js` and `manifest.json` with build provenance. The plugin has no stylesheet, so there is no `styles.css` to ship. A beta comes from the manually triggered `beta.yml`, which refuses to run from any branch but `v2`. It stamps a version like `2.0.0-beta.1` into `manifest.json` for that run only and publishes the same two files as a GitHub prerelease for BRAT.
+A release is a bare-semver tag. `release.yml` checks it against `package.json`, `manifest.json` and `versions.json`, then publishes `main.js` and `manifest.json` with build provenance. The plugin has no stylesheet, so there is no `styles.css` to ship.
