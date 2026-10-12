@@ -1,6 +1,6 @@
 # Vault Changelog
 
-![Status: Stable](https://img.shields.io/badge/Status-Stable-brightgreen.svg)
+![Status: Maintenance](https://img.shields.io/badge/Status-Maintenance-blue.svg)
 
 Maintain a changelog of recently edited notes in [Obsidian](https://obsidian.md/).
 
@@ -14,6 +14,12 @@ Originally created by [Badr Bouslikhin](https://github.com/badrbouslikhin).
 2. Navigate to Community plugins > Browse.
 3. Search for "Changelog".
 4. Install and enable the plugin.
+
+Requires Obsidian 1.13 or later. Older versions of Obsidian install 1.8.0.
+
+## Maintenance
+
+Vault Changelog is in maintenance mode. It gets bug fixes and changes users ask for, and no new features otherwise. [Open an issue](https://github.com/philoserf/obsidian-vault-changelog/issues) to report a problem or ask for a change.
 
 ## Troubleshooting
 
@@ -78,7 +84,7 @@ It makes no network requests and collects nothing.
 | Auto update       | `false`             | Update changelog on vault changes                |
 | Changelog path    | `Changelog.md`      | File location for the changelog                  |
 | Datetime format   | `YYYY-MM-DD[T]HHmm` | Moment.js format string                          |
-| Max recent files  | `25`                | Number of tracked files                          |
+| Max recent files  | `25`                | Number of tracked files (1–500)                  |
 | Use wiki-links    | `true`              | Format filenames as `[[note]]`                   |
 | Changelog heading | _(empty)_           | Optional heading to prepend (e.g. `# Changelog`) |
 | Excluded folders  | _(empty)_           | Folders to exclude from the changelog            |
