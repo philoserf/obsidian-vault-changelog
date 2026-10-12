@@ -29,7 +29,7 @@ src/fixtures/1.8.0.json  changelogs 1.8.0 actually wrote, replayed by the tests
 version-bump.ts          copies package.json's version into manifest.json and versions.json
 ```
 
-Data flows in one direction through the pure module. `main.ts` hands it raw `data.json` and gets back settings. It hands it each vault event and gets back what that event means. It hands it the vault's markdown files and gets back the changelog text. It does the I/O itself. `settings.ts` calls the same rules from `changelog.ts` as validators and sends every accepted edit back through `main.ts`. The tests import only `changelog.ts`. `main.ts` and `settings.ts` cannot run outside Obsidian, so the beta checklist in `CONTRIBUTING.md` checks them by hand.
+Data flows in one direction through the pure module. `main.ts` hands it raw `data.json` and gets back settings. It hands it each vault event and gets back what that event means. It hands it the vault's markdown files and gets back the changelog text. It does the I/O itself. `settings.ts` calls the same rules from `changelog.ts` as validators and sends every accepted edit back through `main.ts`. The tests import only `changelog.ts`. `main.ts` and `settings.ts` cannot run outside Obsidian, so they are checked by hand, on a beta, in a real vault.
 
 ## 1. Loading
 
