@@ -634,7 +634,7 @@ The reload is queued like a write. It runs after any saves already queued, and a
 
 ## 9. Build, tests and release
 
-`bun run build` runs `check` — the type check, Biome, and the Prettier check over every markdown file — then bundles `src/main.ts` into `main.js` with `obsidian` and `electron` marked external. `main.js` is committed because Obsidian ships the committed file. CI and the release workflow both rebuild and fail on `git diff --exit-code main.js`, then run `bun test`.
+`bun run build` runs `check` — the type check, Biome, and the `bun fmt` check over every markdown file — then bundles `src/main.ts` into `main.js` with `obsidian` and `electron` marked external. `main.js` is committed because Obsidian ships the committed file. CI and the release workflow both rebuild and fail on `git diff --exit-code main.js`, then run `bun test`.
 
 The tests run under Bun and take `env` and `file` from the `bun` module. They load the npm `moment` package, a devDependency standing in for Obsidian's `window.moment`, with a dynamic `import()`. The community lint forbids a static import of it, which in shipped code would bundle a second copy of moment into the plugin. The tests are never bundled, so the dynamic import costs nothing. `version-bump.ts`, run by `bun run version` after `package.json` is bumped, also uses Bun's `file` and `write`. It copies the version into `manifest.json` and adds a `versions.json` row, and it refuses to run if `manifest.json` has no `minAppVersion`.
 
