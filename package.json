@@ -10,14 +10,14 @@
     "dev": "bun build src/main.ts --outdir . --format cjs --external obsidian --external electron --sourcemap=linked --watch",
     "build": "bun run check && bun build src/main.ts --outdir . --format cjs --external obsidian --external electron --minify",
     "check": "bun run typecheck && biome check . && bun fmt --check \"**/*.md\"",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun --check",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write . && bun fmt \"**/*.md\"",
     "format:check": "biome format . && bun fmt --check \"**/*.md\"",
     "version": "bun run version-bump.ts",
     "test": "bun test",
-    "deploy": "set -a && . ./.env.local && set +a && bun run build && mkdir -p \"${OBSIDIAN_DEPLOY_DEST:?set it in .env.local}\" && cp main.js manifest.json \"$OBSIDIAN_DEPLOY_DEST\""
+    "deploy": "bun run build && bun run deploy.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
