@@ -6,7 +6,13 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["src/**/*.ts", "src/**/*.js", "*.json", "version-bump.ts"],
+    "includes": [
+      "src/**/*.ts",
+      "src/**/*.js",
+      "*.json",
+      "deploy.ts",
+      "version-bump.ts"
+    ],
     "ignoreUnknown": true
   },
   "formatter": {
